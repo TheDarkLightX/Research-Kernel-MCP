@@ -1,0 +1,2 @@
+"""Research Kernel MCP package."""
+
