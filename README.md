@@ -122,3 +122,8 @@ pytest -q tests/internal/test_research_kernel_mcp.py
 - `SUPPORTED` means the local gate passed. External publication or production
   posture still needs the relevant replay, review, and release gates.
 - Morph reformulations are candidate search objects until separately tested.
+
+## License
+
+Research Kernel MCP is licensed under the Apache License, Version 2.0. See
+the repository root `LICENSE` file.
