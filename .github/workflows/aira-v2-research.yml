@@ -32,7 +32,7 @@ jobs:
           set -euo pipefail
           rm -rf artifacts/aira-v2-research
           mkdir -p artifacts
-          python3 examples/aira_v2/run_research_kernel.py --home artifacts/aira-v2-research | tee artifacts/aira-v2-run-console.json
+          python3 examples/aira_v2/run_research_kernel.py --home artifacts/aira-v2-research 2>&1 | tee artifacts/aira-v2-run-console.log
       - name: Test AIRA integration
         run: pytest -q tests/internal/test_aira_v2_research_run.py
       - name: Verify exported report and durable store
@@ -74,6 +74,6 @@ jobs:
           name: aira-v2-research-kernel
           path: |
             artifacts/aira-v2-research/**
-            artifacts/aira-v2-run-console.json
+            artifacts/aira-v2-run-console.log
           if-no-files-found: warn
           retention-days: 30
