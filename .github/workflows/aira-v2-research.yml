@@ -1,0 +1,60 @@
+name: AIRA v2 Research Kernel
+
+on:
+  push:
+    branches: ["agent/aira-v2-research-run"]
+    paths: ["examples/aira_v2/**", "tests/internal/test_aira_v2_research_run.py", ".github/workflows/aira-v2-research.yml", "internal/research_kernel_mcp/**"]
+  pull_request:
+    paths: ["examples/aira_v2/**", "tests/internal/test_aira_v2_research_run.py", ".github/workflows/aira-v2-research.yml", "internal/research_kernel_mcp/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONHASHSEED: "0"
+
+jobs:
+  research-kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Install test runner
+        run: python3 -m pip install pytest
+      - name: Run Research Kernel self-test
+        run: python3 internal/research_kernel_mcp/server.py --self-test
+      - name: Run AIRA research program
+        run: |
+          rm -rf artifacts/aira-v2-research
+          mkdir -p artifacts
+          python3 examples/aira_v2/run_research_kernel.py --home artifacts/aira-v2-research | tee artifacts/aira-v2-run-console.json
+      - name: Test AIRA integration
+        run: pytest -q tests/internal/test_aira_v2_research_run.py
+      - name: Verify exported report and durable store
+        run: |
+          test -s artifacts/aira-v2-research/research_kernel.sqlite3
+          test -s artifacts/aira-v2-research/events.jsonl
+          test -s artifacts/aira-v2-research/research_kernel_report.json
+          test -s artifacts/aira-v2-research/research_graph.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("artifacts/aira-v2-research")
+          report = json.loads((root / "research_kernel_report.json").read_text())
+          assert report["schema"] == "research_kernel/report/v1"
+          assert any(a["id"] == "aira_claim_provenance_not_output" for a in report["supported_claims"])
+          assert report["frontier"]
+          PY
+      - name: Upload Research Kernel evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: aira-v2-research-kernel
+          path: |
+            artifacts/aira-v2-research/**
+            artifacts/aira-v2-run-console.json
+          if-no-files-found: error
+          retention-days: 30
