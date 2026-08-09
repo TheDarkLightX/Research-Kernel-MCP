@@ -1,0 +1,58 @@
+{
+  "title": "Example structural cryptography paper",
+  "identifier": "arXiv:2601.00001",
+  "primary_uri": "https://arxiv.org/abs/2601.00001",
+  "kurate_uri": "https://kurate.org/paper/example-id",
+  "categories": [
+    "cs.CR",
+    "math.NT"
+  ],
+  "captured_at": "2026-08-09T00:00:00Z",
+  "assessment_model": "Claude Opus 4.8",
+  "prompt_version": "https://kurate.org/prompts",
+  "assessment_summary": "Potentially relevant structural cryptography result. This summary is a discovery signal, not verified evidence.",
+  "metrics": {
+    "score": 7.5,
+    "significance": 7.0,
+    "rigor": 8.0,
+    "novelty": 8.5,
+    "clarity": 7.0,
+    "difficulty": 8.0,
+    "surprisingness": 7.5,
+    "reproducibility": 6.0,
+    "translational_potential": null,
+    "evidence_strength": 7.0,
+    "generalisability": 7.5,
+    "interdisciplinarity": 5.0,
+    "refutation_value": 8.0,
+    "replication_value": 2.0,
+    "resource_intensity": null,
+    "foundationality": 8.0
+  },
+  "reasons": {
+    "rigor": "The assessment says the paper states explicit hypotheses and proof obligations.",
+    "novelty": "The assessment says it proposes a new source-to-mathematics refinement.",
+    "refutation_value": "The assessment says a counterexample would sharply change the claimed theorem boundary."
+  },
+  "ranks": {
+    "category_rank": 12,
+    "category_size": 900
+  },
+  "relevance_score": 0.9,
+  "triage_weights": {
+    "rigor": 0.18,
+    "novelty": 0.14,
+    "evidence_strength": 0.14,
+    "refutation_value": 0.12,
+    "replication_value": 0.08,
+    "foundationality": 0.12,
+    "significance": 0.1,
+    "surprisingness": 0.05,
+    "reproducibility": 0.04,
+    "interdisciplinarity": 0.03
+  },
+  "metadata": {
+    "capture_method": "manual_public_page_snapshot",
+    "capture_note": "Copy public assessment fields exactly and preserve null values when a metric is not applicable."
+  }
+}
