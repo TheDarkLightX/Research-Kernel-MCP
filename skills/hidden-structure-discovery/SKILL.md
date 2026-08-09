@@ -19,6 +19,10 @@ Primary methodological sources:
 - Tricki static archive: https://tricki.sisask.com/
 - Timothy Gowers, “The forthcoming launch of the Tricki”: https://gowers.wordpress.com/2008/10/15/the-forthcoming-launch-of-the-tricki/
 
+For additional compression, epiplexity, cross-domain, moduli, flow, structure/randomness, and Fields-Medalist-style representation lenses, also read:
+
+- `skills/hidden-structure-discovery/LENSES.md`
+
 ## Core rule
 
 Do not ask only:
@@ -354,6 +358,8 @@ knowledge_bang = EC + AC + TF + RI + CF + FL + TR + FD - CD - KD - OD
 ```
 
 This score is for research prioritization only. It is not proof authority.
+
+`LENSES.md` adds optional generative-compression, bounded-observer, downstream-debt, and mapping-debt refinements to this score.
 
 ## Research Kernel workflow
 
