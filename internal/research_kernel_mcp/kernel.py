@@ -13,6 +13,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from internal.research_kernel_mcp.kurate import (
+    DISCOVERY_AUTHORITY,
+    KURATE_PROVIDER,
+    KurateBatch,
+    candidate_receipt_ref,
+    metric_score,
+    validate_discovery_candidate,
+)
 
 ATOM_TYPES = {
     "OBSERVATION",
@@ -596,6 +604,221 @@ class ResearchKernel:
         with self._connect() as conn:
             return self._row_atom(self._get_atom(conn, atom_id))
 
+    def _discovery_atoms_for_work(self, *, run_id: str, work_key: str) -> list[dict[str, Any]]:
+        matches: list[dict[str, Any]] = []
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM atoms WHERE run_id = ? AND type = 'RESULT' ORDER BY created_at DESC, id DESC",
+                (run_id,),
+            ).fetchall()
+            for row in rows:
+                atom = self._row_atom(row)
+                discovery = atom.get("metadata", {}).get("discovery")
+                if isinstance(discovery, dict) and discovery.get("work_key") == work_key:
+                    matches.append(atom)
+        return matches
+
+    def import_kurate_batch(
+        self,
+        *,
+        run_id: str,
+        batch: KurateBatch,
+        apply_triage_scores: bool = False,
+    ) -> dict[str, Any]:
+        """Store Kurate output as triage-only RESULT atoms.
+
+        The imported evidence types are intentionally absent from the promotion
+        gate's supporting-evidence allowlist. A Kurate assessment can prioritize
+        primary-source review, but cannot support a claim by itself.
+        """
+
+        with self._connect() as conn:
+            self._get_run(conn, run_id)
+        if not batch.candidates:
+            candidate_count = 0
+        else:
+            candidate_count = len(batch.candidates)
+        query_text = canonical_json(batch.query)
+        sweep = self.atom_add(
+            run_id=run_id,
+            atom_type="EXPERIMENT",
+            content=f"Kurate discovery sweep returned {candidate_count} triage-only candidates for {query_text}.",
+            status="CANDIDATE",
+            evidence_score=0.0,
+            uncertainty_score=1.0,
+            tags=["discovery", "kurate", "triage-only"],
+            metadata={
+                "provider": KURATE_PROVIDER,
+                "authority": DISCOVERY_AUTHORITY,
+                "query": batch.query,
+                "request_uri": batch.request_uri,
+                "snapshot_ref": batch.snapshot_ref,
+                "raw_response_ref": batch.raw_response_ref,
+                "does_not_support_claims": True,
+            },
+        )["atom"]
+        self.evidence_attach(
+            run_id=run_id,
+            atom_id=sweep["id"],
+            source_type="kurate_discovery_batch",
+            source_uri=batch.request_uri,
+            summary="Raw Kurate discovery response. This is a triage signal, not supporting evidence.",
+            reliability=0.0,
+            artifact_text=batch.raw_response.decode("utf-8"),
+            metadata={
+                "authority": DISCOVERY_AUTHORITY,
+                "snapshot_ref": batch.snapshot_ref,
+                "raw_response_ref": batch.raw_response_ref,
+                "does_not_support_claims": True,
+            },
+        )
+
+        imported: list[dict[str, Any]] = []
+        for candidate in batch.candidates:
+            validate_discovery_candidate(candidate)
+            receipt_ref = candidate_receipt_ref(candidate)
+            identity = canonical_json({"run_id": run_id, "receipt_ref": receipt_ref}).encode("utf-8")
+            atom_id = "result_kurate_" + sha256_hex(identity)[:24]
+            try:
+                self.get_atom(atom_id)
+                created = False
+            except ValueError:
+                paper = candidate["paper"]
+                if apply_triage_scores:
+                    novelty_score = metric_score(candidate, "novelty")
+                    importance_score = metric_score(candidate, "significance")
+                    refutability_score = metric_score(candidate, "refutation_value")
+                else:
+                    novelty_score = 0.5
+                    importance_score = 0.5
+                    refutability_score = 0.5
+                self.atom_add(
+                    run_id=run_id,
+                    atom_type="RESULT",
+                    content=f"Kurate discovery candidate: {paper['title']} ({paper['arxiv_id']}).",
+                    status="CANDIDATE",
+                    confidence=None,
+                    evidence_score=0.0,
+                    novelty_score=novelty_score,
+                    refutability_score=refutability_score,
+                    importance_score=importance_score,
+                    uncertainty_score=1.0,
+                    source_refs=[candidate["provenance"]["paper_uri"]],
+                    tags=[
+                        "discovery",
+                        "kurate",
+                        "triage-only",
+                        f"arxiv:{paper['arxiv_id_base']}",
+                    ],
+                    metadata={
+                        "provider": KURATE_PROVIDER,
+                        "authority": DISCOVERY_AUTHORITY,
+                        "receipt_ref": receipt_ref,
+                        "discovery": candidate,
+                        "triage_scores_applied": bool(apply_triage_scores),
+                        "does_not_support_claims": True,
+                    },
+                    atom_id=atom_id,
+                )["atom"]
+                self.evidence_attach(
+                    run_id=run_id,
+                    atom_id=atom_id,
+                    source_type="kurate_discovery",
+                    source_uri=candidate["provenance"]["paper_uri"],
+                    summary="Kurate assessment imported for literature triage only; verify the exact primary source before attaching paper evidence to a claim.",
+                    reliability=0.0,
+                    artifact_text=canonical_json(candidate),
+                    metadata={
+                        "authority": DISCOVERY_AUTHORITY,
+                        "receipt_ref": receipt_ref,
+                        "does_not_support_claims": True,
+                    },
+                )
+                for prior in self._discovery_atoms_for_work(
+                    run_id=run_id,
+                    work_key=str(candidate["work_key"]),
+                ):
+                    if prior["id"] == atom_id or prior["status"] == "SUPERSEDED":
+                        continue
+                    self.link(
+                        run_id=run_id,
+                        source_atom_id=atom_id,
+                        target_atom_id=prior["id"],
+                        edge_type="SUPERSEDES",
+                        rationale="New Kurate snapshot for the same arXiv work.",
+                    )
+                    self.promote(
+                        claim_atom_id=prior["id"],
+                        to_status="SUPERSEDED",
+                        rationale="A newer Kurate discovery receipt was imported for the same arXiv work.",
+                    )
+                created = True
+
+            produced = self.link(
+                run_id=run_id,
+                source_atom_id=sweep["id"],
+                target_atom_id=atom_id,
+                edge_type="PRODUCES",
+                rationale="The bounded Kurate sweep produced this triage-only candidate.",
+            )["edge"]
+            imported.append(
+                {
+                    "atom_id": atom_id,
+                    "created": created,
+                    "receipt_ref": receipt_ref,
+                    "work_key": candidate["work_key"],
+                    "produces_edge_id": produced["id"],
+                }
+            )
+
+        return {
+            "ok": True,
+            "provider": KURATE_PROVIDER,
+            "authority": DISCOVERY_AUTHORITY,
+            "sweep_atom_id": sweep["id"],
+            "snapshot_ref": batch.snapshot_ref,
+            "raw_response_ref": batch.raw_response_ref,
+            "candidates": imported,
+            "non_claims": [
+                "Kurate rankings and assessments are discovery signals, not peer review.",
+                "No Kurate discovery evidence counts as support in the Research Kernel promotion gate.",
+                "Primary-source applicability and independent checks remain required.",
+            ],
+        }
+
+    def record_discovery_failure(
+        self,
+        *,
+        run_id: str,
+        provider: str,
+        query: dict[str, Any],
+        error_code: str,
+        detail: str,
+    ) -> dict[str, Any]:
+        atom = self.atom_add(
+            run_id=run_id,
+            atom_type="OBSERVATION",
+            content=f"{provider} discovery returned UNKNOWN ({error_code}); no candidates were imported.",
+            status="UNKNOWN",
+            evidence_score=0.0,
+            uncertainty_score=1.0,
+            tags=["discovery", provider, "negative-knowledge", "unknown"],
+            metadata={
+                "provider": provider,
+                "authority": DISCOVERY_AUTHORITY,
+                "query": query,
+                "error": {"code": str(error_code), "detail": str(detail)},
+                "does_not_support_claims": True,
+            },
+        )["atom"]
+        return {
+            "ok": False,
+            "status": "UNKNOWN",
+            "provider": provider,
+            "failure_atom_id": atom["id"],
+            "error": {"code": str(error_code), "detail": str(detail)},
+        }
+
     def _allowed_artifact_roots(self) -> list[Path]:
         roots = [self.home.resolve(), self.repo.resolve()]
         extra = os.environ.get("RK_ARTIFACT_ALLOWLIST", "")
@@ -1143,6 +1366,7 @@ class ResearchKernel:
             counterexample = bool(counterexample_evidence or refuting_edges)
             no_refuting_evidence = (not counterexample) and current != "REFUTED"
             supported_type = atom["type"] in {"CLAIM", "HYPOTHESIS", "RESULT", "DECISION"}
+            claim_authority = atom.get("metadata", {}).get("authority") != DISCOVERY_AUTHORITY
             diagnostics: dict[str, Any] = {
                 "evidence_with_provenance": evidence_with_provenance,
                 "evidence_without_provenance": evidence_without_provenance,
@@ -1161,6 +1385,7 @@ class ResearchKernel:
             gate = {
                 "target": target,
                 "has_supported_type": bool(supported_type),
+                "has_claim_authority": bool(claim_authority),
                 "has_support_evidence": bool(support_evidence),
                 "has_refutation_attempt": bool(refutation_attempts),
                 "has_dependencies": bool(dependencies),
@@ -1176,6 +1401,7 @@ class ResearchKernel:
             if target == "SUPPORTED":
                 required = [
                     "has_supported_type",
+                    "has_claim_authority",
                     "has_support_evidence",
                     "has_refutation_attempt",
                     "has_dependencies",
@@ -1186,7 +1412,12 @@ class ResearchKernel:
                     "has_no_refuting_evidence",
                 ]
             elif target == "REFUTED":
-                required = ["has_counterexample_or_refuting_evidence", "has_provenance", "has_promotion_rationale"]
+                required = [
+                    "has_claim_authority",
+                    "has_counterexample_or_refuting_evidence",
+                    "has_provenance",
+                    "has_promotion_rationale",
+                ]
             else:
                 required = ["has_promotion_rationale"]
             missing = [key for key in required if not gate[key]]
