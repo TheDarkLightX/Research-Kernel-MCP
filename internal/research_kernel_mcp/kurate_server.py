@@ -3,15 +3,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
+from pathlib import Path
 from typing import Any
 
-from internal.research_kernel_mcp import server as base
-from internal.research_kernel_mcp.kurate import (
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from internal.research_kernel_mcp import server as base  # noqa: E402
+from internal.research_kernel_mcp.kurate import (  # noqa: E402
     import_kurate_signal,
     kurate_verification_plan,
     list_kurate_candidates,
 )
-from internal.research_kernel_mcp.kernel import parse_json_list, parse_json_object
+from internal.research_kernel_mcp.kernel import (  # noqa: E402
+    parse_json_list,
+    parse_json_object,
+)
 
 
 mcp = base.mcp
