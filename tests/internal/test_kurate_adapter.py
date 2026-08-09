@@ -16,7 +16,12 @@ from internal.research_kernel_mcp.kurate import (
 from internal.research_kernel_mcp.kernel import ResearchKernel
 
 
-def _snapshot(*, title: str = "A Paper", relevance: float = 0.9, rigor: float = 8.0):
+def _snapshot(
+    *,
+    title: str = "A Paper",
+    relevance: float = 0.9,
+    rigor: float = 8.0,
+):
     return {
         "title": title,
         "identifier": "arXiv:2601.00001",
@@ -26,7 +31,9 @@ def _snapshot(*, title: str = "A Paper", relevance: float = 0.9, rigor: float = 
         "captured_at": "2026-08-09T00:00:00Z",
         "assessment_model": "Claude Opus 4.8",
         "prompt_version": "https://kurate.org/prompts",
-        "assessment_summary": "Potentially relevant structural cryptography result.",
+        "assessment_summary": (
+            "Potentially relevant structural cryptography result."
+        ),
         "metrics": {
             "score": 7.5,
             "significance": 7.0,
@@ -41,7 +48,10 @@ def _snapshot(*, title: str = "A Paper", relevance: float = 0.9, rigor: float = 
             "interdisciplinarity": 5.0,
         },
         "reasons": {
-            "rigor": "The paper states explicit hypotheses and machine-checkable proof obligations.",
+            "rigor": (
+                "The paper states explicit hypotheses and machine-checkable "
+                "proof obligations."
+            ),
             "novelty": "It proposes a new source-to-mathematics refinement.",
         },
         "ranks": {"category_rank": 12, "category_size": 900},
@@ -57,7 +67,9 @@ def _run_with_claim(tmp_path: Path):
     dependency = kernel.atom_add(
         run_id=run_id,
         atom_type="OBSERVATION",
-        content="The production verifier has a source-bound semantic obligation.",
+        content=(
+            "The production verifier has a source-bound semantic obligation."
+        ),
         status="SUPPORTED",
     )["atom"]
     claim = kernel.atom_add(
@@ -97,20 +109,30 @@ def test_import_creates_candidate_not_claim_evidence(tmp_path: Path) -> None:
     assert candidate["type"] == "OBSERVATION"
     assert candidate["status"] == "CANDIDATE"
     assert candidate["evidence_score"] == 0.0
-    assert {"kurate", "discovery_signal", "literature_candidate"}.issubset(candidate["tags"])
+    assert {
+        "kurate",
+        "discovery_signal",
+        "literature_candidate",
+    }.issubset(candidate["tags"])
     assert candidate["metadata"]["kurate"]["promotion_eligible"] is False
-    assert imported["discovery_evidence"]["evidence"]["source_type"] == "discovery_signal"
+    assert (
+        imported["discovery_evidence"]["evidence"]["source_type"]
+        == "discovery_signal"
+    )
     assert imported["links"][0]["edge_type"] == "ANALOGIZES"
     assert kernel.get_atom(claim_id)["status"] == "UNKNOWN"
 
-    with kernel._connect() as conn:  # focused assurance that target evidence was untouched
+    with kernel._connect() as conn:
         target_evidence = conn.execute(
-            "SELECT COUNT(*) FROM evidence WHERE atom_id = ?", (claim_id,)
+            "SELECT COUNT(*) FROM evidence WHERE atom_id = ?",
+            (claim_id,),
         ).fetchone()[0]
     assert target_evidence == 0
 
 
-def test_candidate_listing_sorts_by_triage_and_can_filter_by_target(tmp_path: Path) -> None:
+def test_candidate_listing_sorts_by_triage_and_can_filter_by_target(
+    tmp_path: Path,
+) -> None:
     kernel, run_id, claim_id = _run_with_claim(tmp_path)
     import_kurate_signal(
         kernel,
@@ -133,11 +155,17 @@ def test_candidate_listing_sorts_by_triage_and_can_filter_by_target(tmp_path: Pa
         target_atom_id=claim_id,
         limit=10,
     )
-    assert [item["atom_id"] for item in listed["candidates"]] == ["higher", "lower"]
-    assert listed["candidates"][0]["next_action"].startswith("independently retrieve")
+    assert [
+        item["atom_id"] for item in listed["candidates"]
+    ] == ["higher", "lower"]
+    assert listed["candidates"][0]["next_action"].startswith(
+        "independently retrieve"
+    )
 
 
-def test_kurate_link_does_not_satisfy_claim_promotion_provenance(tmp_path: Path) -> None:
+def test_kurate_link_does_not_satisfy_claim_promotion_provenance(
+    tmp_path: Path,
+) -> None:
     kernel, run_id, claim_id = _run_with_claim(tmp_path)
     import_kurate_signal(
         kernel,
@@ -161,23 +189,26 @@ def test_kurate_link_does_not_satisfy_claim_promotion_provenance(tmp_path: Path)
         claim_atom_id=claim_id,
         to_status="SUPPORTED",
         rationale="Kurate discovery must not supply provenance.",
-        checks={"contradiction_search_done": True, "replay_recipe": "pytest"},
+        checks={
+            "contradiction_search_done": True,
+            "replay_recipe": "pytest",
+        },
     )
     assert rejected["ok"] is False
     assert "has_provenance" in rejected["gate"]["missing"]
 
 
-def test_verification_plan_requires_primary_paper() -> None:
-    kernel = ResearchKernel(Path(pytest.ensuretemp("kurate-plan"))) if hasattr(pytest, "ensuretemp") else None
-    # Avoid depending on deprecated pytest helpers.
-    if kernel is None:
-        pytest.skip("temporary path helper unavailable")
-
-
 def test_verification_plan_from_import(tmp_path: Path) -> None:
     kernel, run_id, _claim_id = _run_with_claim(tmp_path)
-    imported = import_kurate_signal(kernel, run_id=run_id, snapshot=_snapshot())
-    plan = kurate_verification_plan(kernel, imported["candidate_atom"]["id"])
+    imported = import_kurate_signal(
+        kernel,
+        run_id=run_id,
+        snapshot=_snapshot(),
+    )
+    plan = kurate_verification_plan(
+        kernel,
+        imported["candidate_atom"]["id"],
+    )
     assert plan["primary_uri"].startswith("https://arxiv.org/")
     assert [step["id"] for step in plan["steps"]] == [
         "identity",
