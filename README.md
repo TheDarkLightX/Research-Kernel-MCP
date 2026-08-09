@@ -43,6 +43,7 @@ The MCP exposes the compact tool surface from the design spec:
 - `rk_atom_add`
 - `rk_link`
 - `rk_retrieve`
+- `rk_kurate_discover`
 - `rk_morph`
 - `rk_refute`
 - `rk_evidence_attach`
@@ -62,6 +63,45 @@ search, replay evidence when required, and a rationale.
 Evidence attached with only a summary can support a claim, but it does not
 satisfy promotion provenance. Include `source_uri`, `artifact_path`, or
 `artifact_text` on at least one evidence record before promoting a claim.
+
+### Kurate discovery adapter
+
+`rk_kurate_discover` performs a bounded, read-only query against Kurate's
+paper-ranking feed and stores each result as a `RESULT` atom in `CANDIDATE`
+state. The adapter preserves exact arXiv versions, null metrics, a canonical
+snapshot hash, and an immutable copy of the response. Scores are stored as
+integer milli-points so the discovery receipt is deterministic. The normalized
+`research-discovery/candidate/v1` object matches PopperPad's Kurate adapter,
+while each system retains its own validation and authority gate.
+
+The authority boundary is deliberate:
+
+- Kurate objects use `authority="triage_only"`;
+- evidence uses `source_type="kurate_discovery"` or
+  `kurate_discovery_batch`;
+- neither source type belongs to the promotion gate's supporting-evidence
+  allowlist;
+- failed requests and schema drift become `UNKNOWN` negative-knowledge atoms;
+- a later assessment for the same arXiv work supersedes the older discovery
+  receipt without deleting it.
+
+Example MCP call:
+
+```text
+rk_kurate_discover(
+  run_id="my-run",
+  search="symmetric projection operator",
+  categories_json="[\"math.AG\",\"math.NT\"]",
+  sort_key="novelty",
+  limit=8
+)
+```
+
+Set `apply_triage_scores=true` only when the run explicitly authorizes Kurate's
+novelty, significance, and refutation-value assessments to influence frontier
+ordering. Even then, the imported evidence score remains zero. Verify the exact
+primary source and attach independent `paper`, `proof`, `experiment`, or test
+evidence before attempting claim promotion.
 
 ## Resources
 

@@ -43,6 +43,7 @@ The MCP exposes the compact tool surface from the design spec:
 - `rk_atom_add`
 - `rk_link`
 - `rk_retrieve`
+- `rk_kurate_discover`
 - `rk_morph`
 - `rk_refute`
 - `rk_evidence_attach`
@@ -62,6 +63,18 @@ search, replay evidence when required, and a rationale.
 Evidence attached with only a summary can support a claim, but it does not
 satisfy promotion provenance. Include `source_uri`, `artifact_path`, or
 `artifact_text` on at least one evidence record before promoting a claim.
+
+### Kurate discovery adapter
+
+`rk_kurate_discover` is a bounded network shell around a deterministic
+normalizer. It imports Kurate results only as triage candidates. Its evidence
+types never satisfy promotion support, and malformed, unavailable, or
+schema-drifted responses are recorded as `UNKNOWN` rather than guessed.
+
+The canonical receipt preserves the exact arXiv version, integer-scaled metrics,
+null values, request URI, and response snapshot hash. It uses the same normalized
+candidate schema as PopperPad's adapter. Primary-source review and independent
+checking remain separate obligations.
 
 ## Resources
 

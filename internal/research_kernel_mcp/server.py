@@ -25,7 +25,11 @@ from internal.research_kernel_mcp.kernel import (  # noqa: E402
     parse_json_object,
     pretty_json,
 )
-
+from internal.research_kernel_mcp.kurate import (  # noqa: E402
+    KURATE_PROVIDER,
+    KurateAdapterError,
+    fetch_kurate_candidates,
+)
 
 mcp = FastMCP("research-kernel") if FastMCP is not None else None
 
@@ -170,6 +174,68 @@ async def rk_retrieve(
         limit=limit,
     )
     await _progress(ctx, f"Retrieved {len(out['results'])} atoms")
+    return _json(out)
+
+
+@_tool()
+async def rk_kurate_discover(
+    ctx: Context,
+    run_id: str,
+    search: str = "",
+    categories_json: str = "",
+    date_range: str = "all",
+    sort_key: str = "score",
+    sort_dir: str = "desc",
+    limit: int = 10,
+    offset: int = 0,
+    timeout_seconds: int = 20,
+    apply_triage_scores: bool = False,
+) -> str:
+    """Import bounded Kurate rankings as triage-only RESULT atoms.
+
+    Kurate assessments never count as supporting evidence. The exact primary
+    source and an independent checker remain separate promotion obligations.
+    """
+
+    categories = parse_json_list(categories_json, field="categories_json")
+    query = {
+        "search": str(search or ""),
+        "categories": categories,
+        "date_range": str(date_range or "all"),
+        "sort_key": str(sort_key or "score"),
+        "sort_dir": str(sort_dir or "desc"),
+        "limit": limit,
+        "offset": offset,
+    }
+    kernel = _kernel()
+    try:
+        batch = fetch_kurate_candidates(
+            search=search,
+            categories=categories,
+            date_range=date_range,
+            sort_key=sort_key,
+            sort_dir=sort_dir,
+            limit=limit,
+            offset=offset,
+            timeout_seconds=timeout_seconds,
+        )
+    except KurateAdapterError as exc:
+        out = kernel.record_discovery_failure(
+            run_id=run_id,
+            provider=KURATE_PROVIDER,
+            query=query,
+            error_code=exc.code,
+            detail=exc.detail,
+        )
+        await _progress(ctx, f"Kurate discovery UNKNOWN: {exc.code}")
+        return _json(out)
+
+    out = kernel.import_kurate_batch(
+        run_id=run_id,
+        batch=batch,
+        apply_triage_scores=bool(apply_triage_scores),
+    )
+    await _progress(ctx, f"Imported {len(out['candidates'])} Kurate triage candidates")
     return _json(out)
 
 
