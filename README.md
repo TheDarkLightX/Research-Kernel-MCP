@@ -63,6 +63,38 @@ Evidence attached with only a summary can support a claim, but it does not
 satisfy promotion provenance. Include `source_uri`, `artifact_path`, or
 `artifact_text` on at least one evidence record before promoting a claim.
 
+## Optional Kurate discovery extension
+
+The Kurate extension imports public AI assessments as **discovery-only
+literature candidates**. It can rank what to read next, but it cannot provide
+scientific support, refutation, replay evidence, or proof of novelty.
+
+Additional tools:
+
+- `rk_kurate_import`
+- `rk_kurate_candidates`
+- `rk_kurate_verification_plan`
+
+Run the extended server:
+
+```bash
+uv run --no-project --with mcp \
+  python internal/research_kernel_mcp/kurate_server.py
+```
+
+The deterministic kernel does not fetch Kurate directly. A network-facing
+client captures an immutable public assessment snapshot, then imports it. The
+candidate is linked to research claims only through `ANALOGIZES`; the primary
+paper must be independently retrieved and attached before ordinary evidence or
+promotion gates can use it.
+
+See:
+
+```text
+docs/kurate-integration.md
+examples/kurate-assessment.example.json
+```
+
 ## Resources
 
 - `rk://runs/{run_id}/summary`
@@ -86,6 +118,7 @@ satisfy promotion provenance. Include `source_uri`, `artifact_path`, or
 - `research.promote_claim`
 - `research.report`
 - `research.next_frontier`
+- `research.kurate_triage` when running the Kurate extension
 
 ## Run
 
@@ -115,6 +148,14 @@ Focused tests:
 pytest -q tests/internal/test_research_kernel_mcp.py
 ```
 
+Kurate extension tests:
+
+```bash
+pytest -q \
+  tests/internal/test_research_kernel_mcp.py \
+  tests/internal/test_kurate_adapter.py
+```
+
 ## Boundaries
 
 - The kernel stores research artifacts, evidence, and graph state.
@@ -122,8 +163,10 @@ pytest -q tests/internal/test_research_kernel_mcp.py
 - `SUPPORTED` means the local gate passed. External publication or production
   posture still needs the relevant replay, review, and release gates.
 - Morph reformulations are candidate search objects until separately tested.
+- Kurate assessments are literature-discovery signals, not peer review or
+  claim evidence.
 
 ## License
 
-Research Kernel MCP is licensed under the Apache License, Version 2.0. See
-the repository root `LICENSE` file.
+Research Kernel MCP is licensed under the Apache License, Version 2.0. See the
+repository root `LICENSE` file.
