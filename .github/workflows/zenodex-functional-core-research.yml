@@ -1,0 +1,67 @@
+name: zenodex-functional-core-research
+
+on:
+  push:
+    branches:
+      - agent/zenodex-functional-core-research-20260721
+  pull_request:
+    paths:
+      - "tools/zenodex_functional_core_research.py"
+      - ".github/workflows/zenodex-functional-core-research.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  research-kernel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile research driver and kernel
+        run: |
+          python -m py_compile \
+            internal/research_kernel_mcp/kernel.py \
+            tools/zenodex_functional_core_research.py
+      - name: Run kernel self-test
+        run: python internal/research_kernel_mcp/server.py --self-test
+      - name: Build evidence graph and fail-closed frontier
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p internal/zenodex_functional_core_research
+          set -o pipefail
+          python tools/zenodex_functional_core_research.py \
+            --output internal/zenodex_functional_core_research \
+            2>&1 | tee internal/zenodex_functional_core_research/run.log
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+      - name: Upload durable research bundle and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zenodex-research-kernel-functional-core
+          path: internal/zenodex_functional_core_research/
+          if-no-files-found: error
+      - name: Enforce research build
+        if: steps.build.outputs.exit_code != '0'
+        run: exit 1
+      - name: Validate required research outcomes
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("internal/zenodex_functional_core_research")
+          decision = json.loads((root / "decision.json").read_text(encoding="utf-8"))
+          promotion = json.loads((root / "promotion.json").read_text(encoding="utf-8"))
+          frontier = json.loads((root / "frontier.json").read_text(encoding="utf-8"))
+          assert decision["schema"] == "zenodex.research_kernel.functional_core_decision.v1"
+          assert decision["supported_scoped_claim"] == "claim_typed_parser_boundary"
+          assert promotion["ok"] is True
+          assert len(decision["refuted_overbroad_claims"]) == 2
+          assert frontier["frontier"]
+          PY
