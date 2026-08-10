@@ -44,6 +44,7 @@ The MCP exposes the compact tool surface from the design spec:
 - `rk_link`
 - `rk_retrieve`
 - `rk_kurate_discover`
+- `rk_literature_import`
 - `rk_morph`
 - `rk_refute`
 - `rk_evidence_attach`
@@ -75,6 +76,26 @@ The canonical receipt preserves the exact arXiv version, integer-scaled metrics,
 null values, request URI, and response snapshot hash. It uses the same normalized
 candidate schema as PopperPad's adapter. Primary-source review and independent
 checking remain separate obligations.
+
+### Literature export adapter
+
+`rk_literature_import` accepts bounded JSON exports from citracer or MOSAIC.
+It stores exact input bytes, normalized paper candidates, citracer citation
+relations, and MOSAIC partial-source errors. Every imported object remains
+`triage_only`. A citation parser edge or search result cannot satisfy claim
+promotion evidence.
+
+The adapter reads artifacts only from the repository, `RESEARCH_HOME`, or an
+explicit `RK_ARTIFACT_ALLOWLIST` root. Unknown providers, duplicate JSON keys,
+non-finite numbers, dangling citation endpoints, malformed fields, and
+oversized exports are quarantined as `UNKNOWN` rather than repaired by guess.
+Missing Boolean metadata remains `null`; absence is not converted into a
+negative observation.
+
+`literature_importer.py` provides a fleet-facing receipt boundary. It binds
+the exact export digest, provider, import identity, and resulting stable Kernel
+references. It rehashes the input after import and always reports
+`authority="triage_only"`. Ledger presence still cannot support a claim.
 
 ## Resources
 
