@@ -125,6 +125,22 @@ citations use a `CITES` graph edge that is excluded from support, refutation,
 dependency, and promotion gates. Missing retrieval-policy metadata is recorded
 as `unspecified`, not inferred.
 
+Fleet coordinators can use the receipt-bound command adapter. It verifies the
+frozen export hash before and after import and writes a
+`codex-fleet-literature-import-receipt/v1` file containing stable `rk://`
+references:
+
+```bash
+python3 internal/research_kernel_mcp/literature_importer.py \
+  --home RESEARCH_HOME --run-id fleet-literature \
+  --goal "Fleet literature triage" \
+  --artifact export.json --artifact-sha256 sha256:... \
+  --provider mosaic --receipt receipt.json \
+  --import-id mosaic-broad --importer-id research-kernel
+```
+
+The receipt remains `triage_only` and does not satisfy a promotion gate.
+
 ## Resources
 
 - `rk://runs/{run_id}/summary`

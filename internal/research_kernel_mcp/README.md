@@ -92,6 +92,11 @@ oversized exports are quarantined as `UNKNOWN` rather than repaired by guess.
 Missing Boolean metadata remains `null`; absence is not converted into a
 negative observation.
 
+`literature_importer.py` provides a fleet-facing receipt boundary. It binds
+the exact export digest, provider, import identity, and resulting stable Kernel
+references. It rehashes the input after import and always reports
+`authority="triage_only"`. Ledger presence still cannot support a claim.
+
 ## Resources
 
 - `rk://runs/{run_id}/summary`
