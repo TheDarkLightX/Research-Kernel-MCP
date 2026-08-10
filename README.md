@@ -44,6 +44,7 @@ The MCP exposes the compact tool surface from the design spec:
 - `rk_link`
 - `rk_retrieve`
 - `rk_kurate_discover`
+- `rk_literature_import`
 - `rk_morph`
 - `rk_refute`
 - `rk_evidence_attach`
@@ -102,6 +103,27 @@ novelty, significance, and refutation-value assessments to influence frontier
 ordering. Even then, the imported evidence score remains zero. Verify the exact
 primary source and attach independent `paper`, `proof`, `experiment`, or test
 evidence before attempting claim promotion.
+
+### Citracer and MOSAIC import
+
+`rk_literature_import` consumes an existing provider JSON export. Citracer
+imports retain normalized paper nodes and citation relations. MOSAIC imports
+retain deduplicated papers and any partial-source errors. The exact JSON bytes
+are stored by content hash.
+
+```text
+rk_literature_import(
+  run_id="my-run",
+  provider="citracer",
+  artifact_path="research/trace.json"
+)
+```
+
+The artifact must be inside the repository, `RESEARCH_HOME`, or an explicit
+`RK_ARTIFACT_ALLOWLIST` root. Both providers remain `triage_only`. Parsed
+citations use a `CITES` graph edge that is excluded from support, refutation,
+dependency, and promotion gates. Missing retrieval-policy metadata is recorded
+as `unspecified`, not inferred.
 
 ## Resources
 

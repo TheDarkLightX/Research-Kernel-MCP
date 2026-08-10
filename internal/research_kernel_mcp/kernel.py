@@ -21,6 +21,16 @@ from internal.research_kernel_mcp.kurate import (
     metric_score,
     validate_discovery_candidate,
 )
+from internal.research_kernel_mcp.literature import (
+    MAX_EXPORT_BYTES,
+    LiteratureAdapterError,
+    LiteratureBatch,
+    normalize_literature_export,
+    validate_literature_candidate,
+)
+from internal.research_kernel_mcp.literature import (
+    candidate_receipt_ref as literature_candidate_receipt_ref,
+)
 
 ATOM_TYPES = {
     "OBSERVATION",
@@ -62,6 +72,7 @@ EDGE_TYPES = {
     "TESTS",
     "PRODUCES",
     "SUPERSEDES",
+    "CITES",
 }
 
 PROMOTABLE_STATUSES = {"SUPPORTED", "REFUTED", "SUPERSEDED", "STALE", "CANDIDATE", "TESTABLE", "UNDER_TEST"}
@@ -817,6 +828,225 @@ class ResearchKernel:
             "provider": provider,
             "failure_atom_id": atom["id"],
             "error": {"code": str(error_code), "detail": str(detail)},
+        }
+
+    def import_literature_file(
+        self,
+        *,
+        run_id: str,
+        provider: str,
+        artifact_path: str | Path,
+    ) -> dict[str, Any]:
+        """Import a bounded citracer or MOSAIC JSON export as triage data."""
+
+        path = self._validate_artifact_path(Path(artifact_path))
+        try:
+            if path.stat().st_size > MAX_EXPORT_BYTES:
+                raise LiteratureAdapterError("EXPORT_TOO_LARGE", "export exceeds 32 MiB")
+            raw_export = path.read_bytes()
+        except OSError as exc:
+            raise LiteratureAdapterError(
+                "READ_FAILED",
+                f"{type(exc).__name__}: unable to read input export",
+            ) from exc
+        batch = normalize_literature_export(
+            raw_export,
+            provider=provider,
+            source_path=path.name,
+        )
+        return self.import_literature_batch(run_id=run_id, batch=batch)
+
+    def import_literature_batch(
+        self,
+        *,
+        run_id: str,
+        batch: LiteratureBatch,
+    ) -> dict[str, Any]:
+        """Store literature exports without granting claim authority."""
+
+        with self._connect() as conn:
+            self._get_run(conn, run_id)
+        sweep = self.atom_add(
+            run_id=run_id,
+            atom_type="EXPERIMENT",
+            content=(
+                f"{batch.provider} literature import produced "
+                f"{len(batch.candidates)} candidates and {len(batch.relations)} relations."
+            ),
+            status="CANDIDATE",
+            evidence_score=0.0,
+            uncertainty_score=1.0,
+            tags=["discovery", batch.provider, "triage-only", "literature-import"],
+            metadata={
+                "provider": batch.provider,
+                "authority": DISCOVERY_AUTHORITY,
+                "snapshot_ref": batch.snapshot_ref,
+                "raw_export_ref": batch.raw_export_ref,
+                "source_name": batch.source_path,
+                "warnings": list(batch.warnings),
+                "does_not_support_claims": True,
+            },
+        )["atom"]
+        self.evidence_attach(
+            run_id=run_id,
+            atom_id=sweep["id"],
+            source_type="literature_discovery_batch",
+            summary=(
+                f"Exact {batch.provider} JSON export. Parser output and search rankings "
+                "are triage inputs, not supporting evidence."
+            ),
+            reliability=0.0,
+            artifact_text=batch.raw_export.decode("utf-8"),
+            metadata={
+                "provider": batch.provider,
+                "authority": DISCOVERY_AUTHORITY,
+                "snapshot_ref": batch.snapshot_ref,
+                "does_not_support_claims": True,
+            },
+        )
+
+        imported: list[dict[str, Any]] = []
+        atom_by_work: dict[str, str] = {}
+        for candidate in batch.candidates:
+            validate_literature_candidate(candidate)
+            receipt_ref = literature_candidate_receipt_ref(candidate)
+            identity = canonical_json(
+                {"run_id": run_id, "receipt_ref": receipt_ref}
+            ).encode("utf-8")
+            atom_id = "result_literature_" + sha256_hex(identity)[:24]
+            try:
+                self.get_atom(atom_id)
+                created = False
+            except ValueError:
+                paper = candidate["paper"]
+                source_uri = paper.get("source_uri")
+                self.atom_add(
+                    run_id=run_id,
+                    atom_type="RESULT",
+                    content=f"{batch.provider} literature candidate: {paper['title']}.",
+                    status="CANDIDATE",
+                    evidence_score=0.0,
+                    novelty_score=0.5,
+                    refutability_score=0.5,
+                    importance_score=0.5,
+                    uncertainty_score=1.0,
+                    source_refs=[source_uri] if source_uri else [],
+                    tags=["discovery", batch.provider, "triage-only", "literature"],
+                    metadata={
+                        "provider": batch.provider,
+                        "authority": DISCOVERY_AUTHORITY,
+                        "receipt_ref": receipt_ref,
+                        "discovery": candidate,
+                        "does_not_support_claims": True,
+                    },
+                    atom_id=atom_id,
+                )
+                self.evidence_attach(
+                    run_id=run_id,
+                    atom_id=atom_id,
+                    source_type="literature_discovery",
+                    source_uri=source_uri,
+                    summary=(
+                        f"{batch.provider} candidate receipt for triage only. Review the "
+                        "exact primary source before using it as claim evidence."
+                    ),
+                    reliability=0.0,
+                    artifact_text=canonical_json(candidate),
+                    metadata={
+                        "authority": DISCOVERY_AUTHORITY,
+                        "receipt_ref": receipt_ref,
+                        "does_not_support_claims": True,
+                    },
+                )
+                created = True
+            self.link(
+                run_id=run_id,
+                source_atom_id=sweep["id"],
+                target_atom_id=atom_id,
+                edge_type="PRODUCES",
+                rationale=f"The {batch.provider} import produced this triage candidate.",
+            )
+            atom_by_work.setdefault(str(candidate["work_key"]), atom_id)
+            imported.append(
+                {
+                    "atom_id": atom_id,
+                    "created": created,
+                    "receipt_ref": receipt_ref,
+                    "work_key": candidate["work_key"],
+                }
+            )
+
+        relation_results: list[dict[str, Any]] = []
+        for relation in batch.relations:
+            source_atom = atom_by_work.get(str(relation["source_work_key"]))
+            target_atom = atom_by_work.get(str(relation["target_work_key"]))
+            if not source_atom or not target_atom:
+                raise ValueError("literature relation endpoint was not imported")
+            edge_id = "edge_cites_" + sha256_hex(
+                canonical_json(
+                    {"run_id": run_id, "relation_key": relation["relation_key"]}
+                ).encode("utf-8")
+            )[:24]
+            try:
+                self.get_edge(edge_id)
+                created = False
+            except ValueError:
+                self.link(
+                    run_id=run_id,
+                    source_atom_id=source_atom,
+                    target_atom_id=target_atom,
+                    edge_type="CITES",
+                    rationale=(
+                        f"Triage-only citation relation reported by {batch.provider}; "
+                        f"snapshot {batch.snapshot_ref}."
+                    ),
+                    edge_id=edge_id,
+                )
+                created = True
+            relation_results.append(
+                {"edge_id": edge_id, "created": created, "relation_key": relation["relation_key"]}
+            )
+
+        warning_atoms: list[str] = []
+        for warning in batch.warnings:
+            observation = self.atom_add(
+                run_id=run_id,
+                atom_type="OBSERVATION",
+                content=f"{batch.provider} discovery warning: {warning}",
+                status="UNKNOWN",
+                evidence_score=0.0,
+                uncertainty_score=1.0,
+                tags=["discovery", batch.provider, "negative-knowledge", "unknown"],
+                metadata={
+                    "provider": batch.provider,
+                    "authority": DISCOVERY_AUTHORITY,
+                    "snapshot_ref": batch.snapshot_ref,
+                    "does_not_support_claims": True,
+                },
+            )["atom"]
+            self.link(
+                run_id=run_id,
+                source_atom_id=sweep["id"],
+                target_atom_id=observation["id"],
+                edge_type="PRODUCES",
+                rationale="The literature provider reported a partial-source failure.",
+            )
+            warning_atoms.append(observation["id"])
+
+        return {
+            "ok": True,
+            "provider": batch.provider,
+            "authority": DISCOVERY_AUTHORITY,
+            "sweep_atom_id": sweep["id"],
+            "snapshot_ref": batch.snapshot_ref,
+            "candidates": imported,
+            "relations": relation_results,
+            "warning_atom_ids": warning_atoms,
+            "non_claims": [
+                "Search ranking and citation parsing are discovery signals, not peer review.",
+                "No literature-import receipt counts as support in the promotion gate.",
+                "Primary-source review and independent checks remain required.",
+            ],
         }
 
     def _allowed_artifact_roots(self) -> list[Path]:

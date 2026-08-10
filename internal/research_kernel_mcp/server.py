@@ -30,6 +30,10 @@ from internal.research_kernel_mcp.kurate import (  # noqa: E402
     KurateAdapterError,
     fetch_kurate_candidates,
 )
+from internal.research_kernel_mcp.literature import (  # noqa: E402
+    SUPPORTED_PROVIDERS,
+    LiteratureAdapterError,
+)
 
 mcp = FastMCP("research-kernel") if FastMCP is not None else None
 
@@ -236,6 +240,47 @@ async def rk_kurate_discover(
         apply_triage_scores=bool(apply_triage_scores),
     )
     await _progress(ctx, f"Imported {len(out['candidates'])} Kurate triage candidates")
+    return _json(out)
+
+
+@_tool()
+async def rk_literature_import(
+    ctx: Context,
+    run_id: str,
+    provider: str,
+    artifact_path: str,
+) -> str:
+    """Import a citracer or MOSAIC JSON export as triage-only literature data.
+
+    The file must be inside the repository, Research Kernel home, or an
+    explicitly allowlisted artifact root. Imported candidates and citation
+    relations never count as supporting evidence.
+    """
+
+    kernel = _kernel()
+    try:
+        out = kernel.import_literature_file(
+            run_id=run_id,
+            provider=provider,
+            artifact_path=artifact_path,
+        )
+    except LiteratureAdapterError as exc:
+        failure_provider = str(provider or "").strip().lower()
+        if failure_provider not in SUPPORTED_PROVIDERS:
+            failure_provider = "literature"
+        out = kernel.record_discovery_failure(
+            run_id=run_id,
+            provider=failure_provider,
+            query={"artifact_name": Path(artifact_path).name},
+            error_code=exc.code,
+            detail=exc.detail,
+        )
+        await _progress(ctx, f"Literature import UNKNOWN: {exc.code}")
+        return _json(out)
+    await _progress(
+        ctx,
+        f"Imported {len(out['candidates'])} {out['provider']} literature candidates",
+    )
     return _json(out)
 
 
