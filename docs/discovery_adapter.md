@@ -20,7 +20,38 @@ raw_metadata_hash = sha256:...
 
 A client may store that record in atom metadata or attach it for provenance, but `discovery_signal` must never satisfy a `SUPPORTED` promotion gate by itself.
 
-## Providers in v1
+## Domain-first rule for cryptography
+
+For cryptography, query the **IACR Cryptology ePrint Archive before broad scholarly indexes**. Same-week preprints, revisions, withdrawals, and attacks can matter before citation/recommendation systems have indexed them.
+
+`tools/iacr_eprint_discovery.py` is a companion adapter for the archive's OAI-PMH metadata interface. It emits the same triage-only discovery schema.
+
+Fetch one paper by canonical ePrint identifier:
+
+```bash
+python tools/iacr_eprint_discovery.py paper 2026/1575
+```
+
+List a bounded date window:
+
+```bash
+python tools/iacr_eprint_discovery.py recent \
+  --from-date 2026-08-01 \
+  --until-date 2026-08-09 \
+  --limit 50
+```
+
+The default OAI base is:
+
+```text
+https://eprint.iacr.org/oai
+```
+
+and may be overridden with `--base-url` if the archive changes its machine endpoint. The parser supports OAI resumption tokens and hashes the concatenated raw XML pages before normalization.
+
+IACR metadata is a **domain discovery/provenance source**, not proof that a preprint's theorem is correct. ePrint papers may be revised or withdrawn and are not necessarily peer reviewed.
+
+## General providers in v1
 
 ### Semantic Scholar
 
@@ -82,30 +113,31 @@ OPENCITATIONS_TOKEN=...
 ## Suggested Research Kernel workflow
 
 ```text
-1. domain feed / Kurate / Semantic Scholar search
-2. normalize candidate records through this adapter
-3. reconcile DOI/arXiv/ePrint/DBLP identifiers
-4. expand references and citations
-5. add QUESTION / HYPOTHESIS / RISK atoms
-6. use exact-phrase and contradiction search
-7. attach primary papers/proofs/experiments as actual evidence
-8. refute important claims
-9. only then call rk_promote
+1. domain feed (IACR ePrint for cryptography)
+2. Kurate / Semantic Scholar / broad discovery
+3. normalize candidate records as discovery_signal
+4. reconcile DOI/arXiv/ePrint/DBLP identifiers
+5. expand references and citations
+6. add QUESTION / HYPOTHESIS / RISK atoms
+7. use exact-phrase and contradiction search
+8. attach primary papers/proofs/experiments as actual evidence
+9. refute important claims
+10. only then call rk_promote
 ```
 
-Kurate scores, citation counts, recommendation rank, and graph centrality are all **priority signals**, not truth signals.
+Kurate scores, citation counts, recommendation rank, graph centrality, and ePrint recency are all **priority signals**, not truth signals.
 
 ## Failure behavior
 
-The adapter fails visibly on HTTP/network/non-JSON errors and emits no synthetic substitute. It caps result limits to avoid accidental large calls. Provider responses are hashed before normalization so a saved discovery record can retain a provenance fingerprint even though the remote service may later update its metadata.
+The adapters fail visibly on HTTP/network/parse errors and emit no synthetic substitute. They cap result limits to avoid accidental large calls. Provider responses are hashed before normalization so a saved discovery record can retain a provenance fingerprint even though the remote service may later update its metadata.
 
 ## Future providers
 
 Good next additions include:
 
-- IACR ePrint / domain-specific feeds;
 - DBLP identity resolution;
 - OpenAlex once its current authentication/quota contract is configured explicitly;
-- Kurate if it exposes a stable machine API suitable for automated use.
+- Kurate if it exposes a stable machine API suitable for automated use;
+- optional revision/withdrawal-specific IACR alerts once the exact archive event feed is source-bound and tested.
 
 Each provider should remain replaceable. No provider-specific score should enter `rk_promote` as evidence.
