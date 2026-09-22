@@ -43,6 +43,7 @@ The MCP exposes the compact tool surface from the design spec:
 - `rk_atom_add`
 - `rk_link`
 - `rk_retrieve`
+- `rk_semantic_search` (optional Jev reading aid; preview by default)
 - `rk_kurate_discover`
 - `rk_literature_import`
 - `rk_morph`
@@ -64,6 +65,15 @@ search, replay evidence when required, and a rationale.
 Evidence attached with only a summary can support a claim, but it does not
 satisfy promotion provenance. Include `source_uri`, `artifact_path`, or
 `artifact_text` on at least one evidence record before promoting a claim.
+
+### Optional semantic search
+
+`rk_semantic_search` scores every record in a bounded run with Jev, caches exact
+validated responses, and retains linked evidence/corrections independently of
+relevance scores. It returns original text and source hashes, without changing
+claim status or promotion rules. Preview is offline; live export needs an exact
+run allowlist and a locally configured TypeSafe credential. See
+[the adapter contract](internal/research_kernel_mcp/jev_search/README.md).
 
 ### Kurate discovery adapter
 
