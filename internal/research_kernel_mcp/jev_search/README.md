@@ -8,7 +8,28 @@ probabilistic external service to order a reading packet.
 The first approved live development evaluation passed all frozen checks on 67
 records and eight questions. See [the measured results and limits](BENCHMARK.md).
 
-## Modes
+## When to use it
+
+Use semantic search for a question expressed differently from the stored notes,
+especially when recovering earlier failures, corrections or related hypotheses
+in a selected run. For a known atom ID, filename or exact phrase, start with
+`rk_retrieve` or local text search. A small known record does not need an API call.
+
+1. Select the research run and preview the exact export. Reuse existing export
+   authorization only when it covers these records and this destination; an
+   allowlist entry is a technical switch, not permission to export new material.
+2. Use `cached` for an identical query and snapshot already scored. Use `live`
+   when the export is authorized and a new result justifies the call budget.
+3. Anchor a known claim with `anchor_ids_json`, read the returned corrections and
+   refutations with the lead, then verify the underlying evidence yourself.
+
+Preserve failures as records and links before the next search. Neither relevance
+nor a missing search result changes a claim's evidential status. Cache misses
+after redaction or record edits are expected: preview the changed input instead
+of weakening the cache check. Existing MCP clients may need to reconnect after
+installation before this tool appears.
+
+## Calling the tool
 
 ```text
 rk_semantic_search(run_id="my-run", query="What earlier failures apply here?")
