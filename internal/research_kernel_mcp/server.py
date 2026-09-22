@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import sys
 import tempfile
@@ -179,6 +180,36 @@ async def rk_retrieve(
     )
     await _progress(ctx, f"Retrieved {len(out['results'])} atoms")
     return _json(out)
+
+
+@_tool()
+async def rk_semantic_search(
+    ctx: Context,
+    run_id: str,
+    query: str,
+    mode: str = "preview",
+    top: int = 3,
+    anchor_ids_json: str = "[]",
+) -> str:
+    """Jev semantic reading aid for one bounded run; preview by default.
+
+    Live mode exports public atom text to TypeSafe only for operator-allowlisted
+    runs. It scores all snapshot atoms, preserves linked context and exact text,
+    caches validated responses and never changes research/promotion state.
+    """
+    from internal.research_kernel_mcp.jev_search.adapter import search
+    from internal.research_kernel_mcp.jev_search.client import JevError, encode
+
+    try:
+        anchors = parse_json_list(anchor_ids_json, field="anchor_ids_json")
+        if any(not isinstance(x, str) for x in anchors):
+            raise JevError("anchor IDs must be strings")
+        out = await asyncio.to_thread(search, _kernel(), run_id=run_id, query=query,
+                                      mode=mode, top=top, anchors=anchors)
+        return encode(out).decode()
+    except (JevError, ValueError, OSError) as exc:
+        message = str(exc) if isinstance(exc, JevError) else "semantic search input or local operation failed"
+        return encode({"ok": False, "error": message, "authority": "none"}).decode()
 
 
 @_tool()
