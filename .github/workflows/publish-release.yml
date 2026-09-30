@@ -1,0 +1,77 @@
+name: publish-release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check release versions agree
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import tomllib
+          from pathlib import Path
+
+          tag = os.environ["RELEASE_TAG"]
+          version = tag[1:] if tag.startswith("v") else tag
+          project = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          server = json.loads(Path("server.json").read_text())
+          server_version = server["version"]
+          package_version = server["packages"][0]["version"]
+
+          values = {
+              "release": version,
+              "pyproject": project,
+              "server": server_version,
+              "package": package_version,
+          }
+          if len(set(values.values())) != 1:
+              raise SystemExit(f"version mismatch: {values}")
+          print(f"release version: {version}")
+          PY
+
+      - name: Run package self-test
+        run: |
+          python -m pip install .
+          research-kernel-mcp --self-test
+          python -m pip install pytest
+          pytest -q tests/internal/test_research_kernel_mcp.py
+
+      - name: Build distribution
+        run: |
+          python -m pip install build
+          python -m build
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Install MCP publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
+            | tar xz mcp-publisher
+          chmod +x mcp-publisher
+
+      - name: Validate MCP Registry metadata
+        run: ./mcp-publisher validate server.json
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish server.json
