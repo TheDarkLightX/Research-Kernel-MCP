@@ -14,6 +14,59 @@ The model stays creative. The kernel stays deterministic:
 - frontier scoring for the next research action;
 - MCP tools, resources, and prompts.
 
+<!-- mcp-name: io.github.TheDarkLightX/research-kernel-mcp -->
+
+## 30-Second Quickstart
+
+Prerequisite: [uv](https://docs.astral.sh/uv/).
+
+Run the deterministic backend self-test straight from GitHub:
+
+```bash
+uvx --from git+https://github.com/TheDarkLightX/Research-Kernel-MCP.git \
+  research-kernel-mcp --self-test
+```
+
+Run the stdio MCP server:
+
+```bash
+RESEARCH_HOME="$HOME/.research-kernel" \
+uvx --from git+https://github.com/TheDarkLightX/Research-Kernel-MCP.git \
+  research-kernel-mcp
+```
+
+Claude Desktop / compatible stdio clients:
+
+```json
+{
+  "mcpServers": {
+    "research-kernel": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/TheDarkLightX/Research-Kernel-MCP.git",
+        "research-kernel-mcp"
+      ],
+      "env": {
+        "RESEARCH_HOME": "/absolute/path/to/research-kernel-state"
+      }
+    }
+  }
+}
+```
+
+The model proposes research objects; deterministic rules decide whether claims may be promoted. A claim cannot become `SUPPORTED` unless the promotion gate has the required support evidence, refutation attempt, dependencies, provenance, contradiction search, replay evidence when applicable, and rationale.
+
+## Distribution
+
+This repository is prepared for the three main MCP discovery paths:
+
+- **Official MCP Registry:** `server.json` uses the GitHub namespace `io.github.TheDarkLightX/research-kernel-mcp`.
+- **Glama:** `glama.json` declares the repository maintainer for ownership/claiming.
+- **Smithery:** the source install above gives the repository a reproducible stdio entry point suitable for repository-based publishing.
+
+The official MCP Registry validates the referenced package, so publishing `research-kernel-mcp==0.1.0` to PyPI is the final prerequisite before running `mcp-publisher publish`. See [docs/REGISTRY_LAUNCH.md](docs/REGISTRY_LAUNCH.md).
+
 ## Storage
 
 By default the server writes to:
