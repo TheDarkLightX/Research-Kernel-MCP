@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.TheDarkLightX/research-kernel-mcp",
+  "title": "Research Kernel MCP",
+  "description": "Append-only, evidence-first research memory with fail-closed claim promotion, provenance, refutation records, and replayable research state.",
+  "repository": {
+    "url": "https://github.com/TheDarkLightX/Research-Kernel-MCP",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "research-kernel-mcp",
+      "version": "0.1.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "RESEARCH_HOME",
+          "description": "Persistent directory for the SQLite research state, append-only event log, and content-addressed artifacts.",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
