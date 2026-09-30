@@ -32,7 +32,21 @@ pytest -q
 
 The official MCP Registry stores metadata, not the executable package. Publish version `0.1.0` to PyPI first.
 
-Recommended path: PyPI Trusted Publishing from a GitHub Actions release workflow. The PyPI project must trust this repository/workflow before the first publish.
+The repository includes `.github/workflows/publish-release.yml`. It uses GitHub OIDC for both PyPI Trusted Publishing and the official MCP Registry.
+
+One-time PyPI setup before the first release:
+
+1. Create/claim the PyPI project `research-kernel-mcp`.
+2. Add a Trusted Publisher for:
+   - owner: `TheDarkLightX`
+   - repository: `Research-Kernel-MCP`
+   - workflow: `publish-release.yml`
+   - environment: leave blank unless you intentionally add a protected GitHub environment.
+3. Publish a GitHub release whose tag exactly matches `pyproject.toml` and `server.json`, e.g. `v0.1.0`.
+
+The workflow refuses to publish if the release tag, Python package version, server version, and registry package version disagree. It then runs the self-test/tests, builds and publishes PyPI, validates `server.json`, authenticates to the official MCP Registry with GitHub OIDC, and publishes the registry entry.
+
+The PyPI project must trust this repository/workflow before the first publish.
 
 The README contains the required package-ownership marker:
 
