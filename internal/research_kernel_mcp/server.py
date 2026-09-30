@@ -568,7 +568,7 @@ def _self_test() -> dict[str, Any]:
         return ResearchKernel(Path(tmp)).self_test()
 
 
-if __name__ == "__main__":
+def main() -> None:
     parser = argparse.ArgumentParser(description="Research Kernel MCP server")
     parser.add_argument("--self-test", action="store_true", help="Run a deterministic backend self-test and exit")
     parser.add_argument("--transport", choices=["stdio", "sse", "streamable-http"], default="stdio")
@@ -583,3 +583,7 @@ if __name__ == "__main__":
         print(json.dumps({"ok": False, "error": "mcp_fastmcp_not_installed"}, sort_keys=True))
         raise SystemExit(1)
     mcp.run(transport=args.transport, mount_path=args.mount_path)
+
+
+if __name__ == "__main__":
+    main()
