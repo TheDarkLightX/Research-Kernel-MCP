@@ -1,2 +1,2 @@
 // Generated from the exact functional core source bytes.
-export const KERNEL_SOURCE_SHA256 = "990e189dc8ca983593ef057bf71e98d5808df8bead645399e6ef2e606b8a9eb8";
+export const KERNEL_SOURCE_SHA256 = "1f548ab94b675ad72aa3e16fd7bd94fbe2b6c125ec69b0d227066d84cdae47e0";

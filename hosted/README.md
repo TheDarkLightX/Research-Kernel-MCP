@@ -8,8 +8,9 @@ Private, Site-hosted scientific memory, implemented using functional core / impe
 - Immutable claim revisions with explicit category, statement, assumptions, scope and dependency fingerprints.
 - A bounded integer interpreter: exact BigInt arithmetic, 1–3 finite variables, up to 2,048 combinations, signed remainder, exponents in 0–8 and a 256-bit output bound. It has no arbitrary code execution, subprocess or network capability.
 - Checker receipts bind the revision, recipe, checker source, arithmetic environment, aggregate input/output transcript and outcome. Counterexamples and inconclusive results are retained. A pass concerns the recipe and its finite grid, not a theorem or the prose claim.
-- Transitive review flags after dependency revision or failure. Old receipts remain tied to their original revisions.
+- Transitive review flags after dependency revision, checker failure or a current-revision negative evidence assertion. An unverified objection requests review without changing its source claim’s checker verdict. Old receipts remain tied to their original revisions.
 - Owner-selected CC BY 4.0 packages with canonical digests. Catalog access follows the Site audience. Exporting a package makes an intentionally shareable file; withdrawing cannot recall previously exported copies.
+- Failure memory searches every claim revision, scope and negative evidence summary. Corrected claims retain earlier counterexamples with the original recipe, assumptions and receipt; old failures do not determine the current revision’s status.
 - Imported claims start unverified; external receipts never become local checker authority.
 - A non-transferable, non-monetary contribution ledger. The first pass or counterexample for a recipe/checker/outcome gets one point per workspace. Identical replays receive no additional points. Usage counts prepare a hosted service for future billing; this pilot charges nothing.
 - Owner-only private snapshot/journal exports and exact pinned-core replay checks. Exported backups include identities and must remain private.
@@ -58,4 +59,8 @@ The two servers retain their own storage and tools. ChatGPT can use the export c
 
 ## Validation limitation
 
-Protocol, database and registry-contract tests run locally. Browser interaction, real-host WebMCP behavior and a connected ChatGPT sidebar need end-to-end user-session verification; they are not established by build or mocked registry tests alone.
+Protocol, database and registry-contract tests run locally. The browser preview was checked for layout, navigation and the signed-out state; the workbench layout was repaired so notifications no longer displace its columns. The available preview has no authenticated account or WebMCP registrations, so authenticated browser actions, real-host WebMCP behavior and connected ChatGPT sidebar actions remain unverified. Installation alone does not establish a successful data-tool call.
+
+Run `rk_workspaces_list` after connecting the Site plugin. Then create a private workspace, record the built-in bounded example and run `rk_check`: the exact grid should return 121/121 cases passed. Revise the recipe to omit the cross term and check it again; the saved counterexample must remain discoverable after a corrected revision is added. These are synthetic acceptance examples, not scientific results.
+
+The functional-core source pin changes when transition semantics or helpers change. Existing backups remain readable; exact replay requires the matching source version for every recorded commit. The deployment was inspected before this update and contained no research workspaces.

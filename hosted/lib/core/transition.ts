@@ -1,5 +1,5 @@
 import { checkRecipe, CHECKER_ID } from "./checker";
-import { canonical, current, roleFor, claimStatus, type Workspace, type Command, type Context, type Decision, type Hash, type ClaimInput, type ClaimRevision, type Publication } from "./model";
+import { canonical, current, roleFor, claimStatus, hasNegativeEvidence, type Workspace, type Command, type Context, type Decision, type Hash, type ClaimInput, type ClaimRevision, type Publication } from "./model";
 import { commandSchema } from "./validation";
 
 export function publicationDigest(packet: Omit<Publication, "hash"> | Publication, hash: Hash): string {
@@ -13,8 +13,20 @@ export function revisionDigest(value: ClaimRevision | Omit<ClaimRevision, "hash"
 function dependencyIssue(r: ClaimRevision, state: Workspace): boolean {
   return r.dependencies.some(id => {
     const c = state.claims.find(c => c.id === id);
-    return !c || current(c).hash !== r.dependencyHashes[id] || ["counterexample", "needs-review"].includes(claimStatus(state, c));
+    return !c || current(c).hash !== r.dependencyHashes[id] || hasNegativeEvidence(state, c) || ["counterexample", "needs-review"].includes(claimStatus(state, c));
   });
+}
+function flagDependents(state: Workspace, claimId: string): string[] {
+  const affected = new Set([claimId]);
+  for (const id of affected) {
+    for (const claim of state.claims) {
+      if (!affected.has(claim.id) && current(claim).dependencies.includes(id)) {
+        claim.needsReview = true;
+        affected.add(claim.id);
+      }
+    }
+  }
+  return [...affected].filter(id => id !== claimId);
 }
 function revision(input: ClaimInput, state: Workspace, ctx: Context, hash: Hash, number: number): ClaimRevision {
   const dependencyHashes = Object.fromEntries(input.dependencies.slice().sort().map(id => {
@@ -95,18 +107,14 @@ export function transition(before: Workspace, raw: unknown, ctx: Context, hash: 
         if (cmd.claim.dependencies.some(d => dependsOn(d))) return reject("dependency-cycle", "Dependencies must form an acyclic graph.");
         const next = revision(cmd.claim, state, ctx, hash, r.number + 1);
         claim.revisions.push(next); claim.needsReview = dependencyIssue(next, state);
-        const affected = new Set([claim.id]);
-        let changed = true;
-        while (changed) {
-          changed = false;
-          for (const c of state.claims) if (!affected.has(c.id) && current(c).dependencies.some(d => affected.has(d))) { c.needsReview = true; affected.add(c.id); changed = true; }
-        }
-        result = { claimId: claim.id, revisionHash: next.hash, affectedClaims: [...affected].filter(id => id !== claim.id) };
+        result = { claimId: claim.id, revisionHash: next.hash, affectedClaims: flagDependents(state, claim.id) };
       } else if (cmd.type === "attachEvidence") {
         if (state.evidence.length >= 400) return reject("capacity", "At most 400 evidence entries per workspace.");
         if (cmd.uri && !/^(https?:\/\/|doi:|rk-package:)/i.test(cmd.uri)) return reject("invalid-uri", "Use an http(s) URL, doi: or rk-package: reference.");
         state.evidence.push({ id: ctx.id, claimId: claim.id, revisionHash: r.hash, kind: cmd.kind, uri: cmd.uri, summary: cmd.summary, artifactHash: cmd.artifactHash, author: ctx.actor.userId, createdAt: ctx.now, authority: "unverified" });
         result = { evidenceId: ctx.id, authority: "unverified" };
+        // An objection requests review; it cannot manufacture a checker verdict.
+        if (cmd.kind === "negative") result.affectedClaims = flagDependents(state, claim.id);
       } else if (cmd.type === "checkClaim") {
         if (!r.recipe || r.kind !== "bounded") return reject("unsupported-check", "This pilot checks bounded integer recipes. Other evidence remains unverified.");
         if (state.receipts.length >= 500) return reject("capacity", "At most 500 verification receipts per workspace.");
@@ -119,8 +127,7 @@ export function transition(before: Workspace, raw: unknown, ctx: Context, hash: 
         if (!previous && check.outcome !== "inconclusive") state.ledger.push({ id: ctx.id, actor: ctx.actor.userId, claimId: claim.id, revisionHash: r.hash, reason: check.outcome === "passed" ? "reproducible-check" : "counterexample", points: 1, createdAt: ctx.now, transferable: false });
         // Failed dependencies propagate review, while immutable prior receipts remain inspectable.
         if (check.outcome === "counterexample") {
-          const affected = new Set([claim.id]); let changed = true;
-          while (changed) { changed = false; for (const c of state.claims) if (!affected.has(c.id) && current(c).dependencies.some(d => affected.has(d))) { c.needsReview = true; affected.add(c.id); changed = true; } }
+          flagDependents(state, claim.id);
         }
         result = { receipt, contributionRecorded: !previous && check.outcome !== "inconclusive" };
       } else if (cmd.type === "publishClaim") {

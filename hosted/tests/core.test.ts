@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { checkRecipe, type Recipe } from "../lib/core/checker";
-import { canonical, current, createWorkspace, claimStatus, type Workspace, type Actor, type Context, type Command, type ClaimInput } from "../lib/core/model";
+import { canonical, current, createWorkspace, claimStatus, hasFailureHistory, matchesClaimQuery, type Workspace, type Actor, type Context, type Command, type ClaimInput } from "../lib/core/model";
 import { transition, publicationDigest } from "../lib/core/transition";
 import { sha256 } from "../lib/hash";
 import { CHECKER_SOURCE_SHA256 } from "../lib/checker-pin";
@@ -57,6 +57,36 @@ test("revision and failed dependencies invalidate transitive dependents without 
   assert.equal(w.claims[1].needsReview, true, "revising cannot waive a failed dependency");
 });
 test("dependency cycles are rejected", () => { let w = base(); w = apply(w, { type: "addClaim", claim: { ...input, dependencies: ["a"] } }, "b"); assert.equal(transition(w, { type: "reviseClaim", claimId: "a", expectedHash: current(w.claims[0]).hash, claim: { ...input, dependencies: ["b"] } }, context("cycle"), sha256).decision, "reject"); });
+test("negative evidence requests transitive review without granting a refutation verdict", () => {
+  let w = base();
+  w = apply(w, { type: "checkClaim", claimId: "a", expectedHash: current(w.claims[0]).hash }, "pass");
+  w = apply(w, { type: "addClaim", claim: { ...input, dependencies: ["a"] } }, "b");
+  w = apply(w, { type: "addClaim", claim: { ...input, dependencies: ["b"] } }, "c");
+  w = apply(w, { type: "attachEvidence", claimId: "a", expectedHash: current(w.claims[0]).hash, kind: "negative", summary: "The prose may not match the finite recipe.", uri: "", artifactHash: null }, "objection");
+  assert.equal(claimStatus(w, w.claims[0]), "bounded-checked");
+  assert.equal(w.receipts.length, 1); assert.equal(w.evidence[0].authority, "unverified");
+  assert(w.claims[1].needsReview && w.claims[2].needsReview);
+  w = apply(w, { type: "addClaim", claim: { ...input, dependencies: ["a"] } }, "new-dependent");
+  assert.equal(w.claims[3].needsReview, true);
+  w = apply(w, { type: "reviseClaim", claimId: "b", expectedHash: current(w.claims[1]).hash, claim: { ...input, dependencies: ["a"] } }, "cannot-waive");
+  assert.equal(w.claims[1].needsReview, true);
+  w = apply(w, { type: "reviseClaim", claimId: "a", expectedHash: current(w.claims[0]).hash, claim: { ...input, statement: "Revised after reviewing the objection." } }, "address");
+  w = apply(w, { type: "reviseClaim", claimId: "b", expectedHash: current(w.claims[1]).hash, claim: { ...input, dependencies: ["a"] } }, "review");
+  assert.equal(w.claims[1].needsReview, false);
+  assert.equal(w.claims[2].needsReview, true);
+});
+test("a corrected claim retains searchable failures with their original scope", () => {
+  let w = apply(createWorkspace("w", "Lab", owner), { type: "addClaim", claim: { ...input, title: "Original failed approach", scope: "Original finite domain", recipe: { ...recipe, right: "x^2+y^2" } } }, "a");
+  const original = current(w.claims[0]);
+  w = apply(w, { type: "checkClaim", claimId: "a", expectedHash: original.hash }, "fail");
+  w = apply(w, { type: "reviseClaim", claimId: "a", expectedHash: original.hash, claim: input }, "fix");
+  w = apply(w, { type: "checkClaim", claimId: "a", expectedHash: current(w.claims[0]).hash }, "pass");
+  assert.equal(claimStatus(w, w.claims[0]), "bounded-checked");
+  assert(hasFailureHistory(w, w.claims[0]));
+  assert(matchesClaimQuery(w, w.claims[0], "original finite domain", true));
+  assert(!matchesClaimQuery(w, w.claims[0], "original finite domain"));
+  assert.equal(w.receipts[0].claimRevision, original.hash);
+});
 test("contribution points are deduplicated, non-transferable and outcome neutral", () => {
   let w = base(); const cmd: Command = { type: "checkClaim", claimId: "a", expectedHash: current(w.claims[0]).hash };
   w = apply(w, cmd, "c1"); w = apply(w, cmd, "c2"); assert.equal(w.ledger.length, 1); assert.equal(w.ledger[0].transferable, false); assert.equal(w.usage.checks, 2);

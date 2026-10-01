@@ -45,3 +45,19 @@ test("MCP App resource has valid script syntax and no preloaded private records"
   const html = memoryWidget("https://pilot.example.test"); const script = html.split("<script>")[1].split("</script>")[0];
   assert.doesNotThrow(() => new vm.Script(script)); assert(!html.includes(owner.email)); assert(html.includes("ui/initialize")); assert(html.includes("tools/call")); assert(html.includes("event") || html.includes("e.source!==window.parent"));
 });
+test("negative-memory search returns original context after a failed claim is corrected", async () => {
+  const db = new SqliteD1(), s = new ResearchStore(db.port());
+  let w = await s.create("Failure memory", randomUUID(), owner);
+  const add = await s.execute(w.id, w.revision, randomUUID(), { type: "addClaim", claim: { ...input, title: "Original missing cross term", scope: "Original finite grid", recipe: { ...input.recipe, right: "x^2+y^2" } } }, owner);
+  w = add.workspace; const claimId = w.claims[0].id, failedHash = w.claims[0].revisions[0].hash;
+  w = (await s.execute(w.id, w.revision, randomUUID(), { type: "checkClaim", claimId, expectedHash: failedHash }, owner)).workspace;
+  w = (await s.execute(w.id, w.revision, randomUUID(), { type: "reviseClaim", claimId, expectedHash: failedHash, claim: input }, owner)).workspace;
+  w = (await s.execute(w.id, w.revision, randomUUID(), { type: "checkClaim", claimId, expectedHash: w.claims[0].revisions[1].hash }, owner)).workspace;
+  const result: any = (await callResearchTool("rk_negative_memory", { workspaceId: w.id, query: "original finite grid" }, s, owner)).structuredContent;
+  assert.equal(result.claims.length, 1); assert.equal(result.claims[0].status, "bounded-checked");
+  assert.equal(result.claims[0].revisions[0].scope, "Original finite grid");
+  assert.equal(result.counterexamples[0].claimRevision, failedHash);
+  const absent: any = (await callResearchTool("rk_negative_memory", { workspaceId: w.id, query: "unrelated approach" }, s, owner)).structuredContent;
+  assert.equal(absent.claims.length, 0); assert.equal(absent.counterexamples.length, 0);
+  db.close();
+});

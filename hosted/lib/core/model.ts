@@ -49,6 +49,20 @@ export type Decision = { decision: "reject"; code: string; message: string } | {
   result: Record<string, unknown>; effects: readonly [];
 };
 export const current = (c: Claim): ClaimRevision => c.revisions[c.revisions.length - 1];
+export function hasNegativeEvidence(state: Workspace, claim: Claim): boolean {
+  return state.evidence.some(e => e.claimId === claim.id && e.revisionHash === current(claim).hash && e.kind === "negative");
+}
+// Failure memory spans every revision. A corrected claim must not erase its lesson.
+export function hasFailureHistory(state: Workspace, claim: Claim): boolean {
+  return state.receipts.some(r => r.claimId === claim.id && r.result.outcome === "counterexample")
+    || state.evidence.some(e => e.claimId === claim.id && e.kind === "negative");
+}
+export function matchesClaimQuery(state: Workspace, claim: Claim, query: string, history = false): boolean {
+  const revisions = history ? claim.revisions : [current(claim)];
+  const text = revisions.map(r => [r.title, r.statement, r.assumptions, r.scope].join(" "));
+  if (history) text.push(...state.evidence.filter(e => e.claimId === claim.id && e.kind === "negative").map(e => e.summary));
+  return text.join(" ").toLowerCase().includes(query.trim().toLowerCase());
+}
 export function canonical(value: unknown): string {
   if (value === null || typeof value !== "object") {
     const v = JSON.stringify(value);
