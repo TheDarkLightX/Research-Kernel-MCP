@@ -1,2 +1,3 @@
 import { KernelApp } from "@/components/kernel-app";
-export default function Home() { return <KernelApp />; }
+import { createExampleMemory } from "@/lib/example-memory";
+export default function Home() { return <KernelApp example={createExampleMemory()} />; }
