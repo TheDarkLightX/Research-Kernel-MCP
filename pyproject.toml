@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 dependencies = [
-  "mcp>=1.0,<3",
+  "mcp>=1.0,<2",
 ]
 keywords = ["mcp", "research", "provenance", "verification", "ai-agents"]
 
