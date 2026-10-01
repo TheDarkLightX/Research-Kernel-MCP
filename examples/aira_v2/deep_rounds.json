@@ -1,0 +1,373 @@
+{
+  "schema": "research-kernel/aira-v2-deep-rounds/v1",
+  "tracks": {
+    "smith_integer": {
+      "question": "Can one exact integer certificate expose conservation, torsion, witness ambiguity, a minimum-dimensional grade, and adversarial fiber relations?",
+      "morph_modes": ["equivalent_statement", "dual_problem", "counterexample_search", "invariant_form", "formal_spec", "benchmark_proxy"]
+    },
+    "authority_coverage": {
+      "question": "Which fact-usage and exact-coverage profiles compose without permitting reuse, omission, overlap, or bundle splitting?",
+      "morph_modes": ["graph_form", "counterexample_search", "formal_spec", "attack_surface", "benchmark_proxy"]
+    },
+    "concurrency": {
+      "question": "Which schedules are one semantic dependency object, and which authority conflicts destroy parallel independence?",
+      "morph_modes": ["graph_form", "dual_problem", "counterexample_search", "invariant_form", "formal_spec"]
+    },
+    "cryptographic_refinement": {
+      "question": "What exact governed statement must ARM or another proof backend prove before ZRM may construct a sealed fact?",
+      "morph_modes": ["attack_surface", "formal_spec", "implementation_obligation", "counterexample_search"]
+    },
+    "formal_verification": {
+      "question": "Which AIRA claims need Lean proofs, bounded ESSO counterexamples, independent certificate checkers, or cryptographic assumptions?",
+      "morph_modes": ["formal_spec", "weaker_statement", "counterexample_search", "benchmark_proxy"]
+    },
+    "runtime_commit": {
+      "question": "How does a proof-valid authority shard refine to a pure plan without being confused with freshness at linearization or durable commit success?",
+      "morph_modes": ["invariant_form", "counterexample_search", "formal_spec", "implementation_obligation"]
+    }
+  },
+  "sources": [
+    {
+      "id": "DS01",
+      "track": "smith_integer",
+      "title": "Convex Integer Maximization via Graver Bases",
+      "authors": "Jesus A. De Loera; Raymond Hemmecke; Shmuel Onn; Robert Weismantel",
+      "year": 2008,
+      "uri": "https://arxiv.org/abs/math/0609019",
+      "relevance": "Primitive conformal integer-kernel directions can generate universal augmentation and adversarial fiber moves.",
+      "limitation": "General computation may be expensive, and a lattice move is not automatically authority-inert."
+    },
+    {
+      "id": "DS02",
+      "track": "smith_integer",
+      "title": "On the Complexity of Toric Ideals",
+      "authors": "Diego Cifuentes; Shmuel Onn",
+      "year": 2019,
+      "uri": "https://arxiv.org/abs/1902.01484",
+      "relevance": "Normal forms, Groebner bases, and Graver bases are hard in general but can become tractable under structural parameters.",
+      "limitation": "Any ZRM tooling must bound schemas and distinguish offline authoring from runtime checks."
+    },
+    {
+      "id": "DS03",
+      "track": "smith_integer",
+      "title": "A Fast Algorithm for Computing the Smith Normal Form with Multipliers for a Nonsingular Integer Matrix",
+      "authors": "Stavros Birmpilis; George Labahn; Arne Storjohann",
+      "year": 2021,
+      "uri": "https://arxiv.org/abs/2111.09949",
+      "relevance": "Multiplier certificates make integer normal-form coordinates independently checkable.",
+      "limitation": "AIRA uses deterministic verification of committed rectangular certificates and does not inherit the paper's randomized algorithm."
+    },
+    {
+      "id": "DS04",
+      "track": "authority_coverage",
+      "title": "Iris: Monoids and Invariants as an Orthogonal Basis for Concurrent Reasoning",
+      "authors": "Ralf Jung et al.",
+      "year": 2015,
+      "uri": "https://doi.org/10.1145/2818638",
+      "relevance": "Resource algebras and authoritative ownership motivate capacity-bounded composable fact use.",
+      "limitation": "AIRA needs a concrete interpretation before Iris soundness results apply."
+    },
+    {
+      "id": "DS05",
+      "track": "authority_coverage",
+      "title": "Provenance Semirings",
+      "authors": "Todd J. Green; Gregory Karvounarakis; Val Tannen",
+      "year": 2007,
+      "uri": "https://doi.org/10.1145/1265530.1265535",
+      "relevance": "Provenance retains which inputs and derivations contribute to an output.",
+      "limitation": "Database provenance is not affine authority, policy freshness, or exact-once state."
+    },
+    {
+      "id": "DS06",
+      "track": "authority_coverage",
+      "title": "Idris 2: Quantitative Type Theory in Practice",
+      "authors": "Edwin Brady",
+      "year": 2021,
+      "uri": "https://arxiv.org/abs/2104.00480",
+      "relevance": "Quantitative usage annotations clarify linear, erased, and reusable resources.",
+      "limitation": "Compile-time usage does not replace runtime governed fact verification."
+    },
+    {
+      "id": "DS07",
+      "track": "concurrency",
+      "title": "Unfolding-Based Partial Order Reduction",
+      "authors": "Cesar Rodriguez; Marcelo Sousa; Subodh Sharma; Daniel Kroening",
+      "year": 2015,
+      "uri": "https://arxiv.org/abs/1507.00980",
+      "relevance": "Event structures and an explicit independence relation avoid redundant schedules.",
+      "limitation": "ZRM independence must include facts, capacities, context, resources, and authenticated footprints."
+    },
+    {
+      "id": "DS08",
+      "track": "concurrency",
+      "title": "Completeness Theorems for Pomset Languages and Concurrent Kleene Algebras",
+      "authors": "Michael R. Laurence; Georg Struth",
+      "year": 2017,
+      "uri": "https://arxiv.org/abs/1705.05896",
+      "relevance": "Pomsets separate sequential and parallel composition and expose exchange laws.",
+      "limitation": "Algebraic exchange is valid only after concrete authority admission side conditions."
+    },
+    {
+      "id": "DS09",
+      "track": "cryptographic_refinement",
+      "title": "Hashing to Elliptic Curves",
+      "authors": "IETF",
+      "year": 2023,
+      "uri": "https://www.rfc-editor.org/rfc/rfc9380",
+      "relevance": "Versioned suites and domain separation are required for governed kind-generator derivation.",
+      "limitation": "Correct derivation does not authenticate which basis profile current policy selected."
+    },
+    {
+      "id": "DS10",
+      "track": "cryptographic_refinement",
+      "title": "Anoma RISC Zero Resource Machine",
+      "authors": "Anoma",
+      "year": 2026,
+      "uri": "https://github.com/anoma/arm-risc0",
+      "relevance": "Concrete shielded resources, compliance proofs, logic proofs, deltas, and RISC Zero aggregation provide a real adapter target.",
+      "limitation": "Proof validity remains distinct from current policy authority, exact aggregate coverage, state freshness, and durable commit."
+    },
+    {
+      "id": "DS11",
+      "track": "formal_verification",
+      "title": "A Formally Verified Checker for Proofs of Unsatisfiability",
+      "authors": "Peter Lammich",
+      "year": 2017,
+      "uri": "https://doi.org/10.1145/3062341.3062356",
+      "relevance": "Small independent checkers reduce trust in proof and solver producers.",
+      "limitation": "AIRA does not yet emit full independently checked SAT or SMT proof objects."
+    },
+    {
+      "id": "DS12",
+      "track": "formal_verification",
+      "title": "Lean4Lean: Towards a Verified Typechecker for Lean, in Lean",
+      "authors": "Mario Carneiro",
+      "year": 2024,
+      "uri": "https://arxiv.org/abs/2403.14064",
+      "relevance": "Independent Lean checking can reduce reliance on one kernel implementation.",
+      "limitation": "A checked theorem is useful only if its statement and implementation refinement are correct."
+    },
+    {
+      "id": "DS13",
+      "track": "runtime_commit",
+      "title": "Linearizability: A Correctness Condition for Concurrent Objects",
+      "authors": "Maurice P. Herlihy; Jeannette M. Wing",
+      "year": 1990,
+      "uri": "https://doi.org/10.1145/78969.78972",
+      "relevance": "Concurrent commit should refine an explicit sequential object at a linearization point.",
+      "limitation": "Linearizability does not establish transition authorization before commit."
+    },
+    {
+      "id": "DS14",
+      "track": "runtime_commit",
+      "title": "Proof-Carrying Code",
+      "authors": "George C. Necula",
+      "year": 1997,
+      "uri": "https://doi.org/10.1145/263699.263712",
+      "relevance": "An untrusted producer supplies a certificate checked by a small consumer-side verifier.",
+      "limitation": "Certificate acceptance proves only the exact encoded policy and cannot imply durable state success."
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "DH01",
+      "track": "smith_integer",
+      "claim": "For a checked Smith profile U*A*V=D, typed effect plus the tail rows of V inverse reconstructs every integer reaction witness.",
+      "test": "Search bounded signature collisions, mutate each multiplier, and prove a general reconstruction-implies-injectivity theorem.",
+      "importance": 1.0,
+      "novelty": 0.95,
+      "refutability": 1.0,
+      "depends_on": ["DS03"]
+    },
+    {
+      "id": "DH02",
+      "track": "smith_integer",
+      "claim": "The minimum dimension of any globally injective linear authority grade equals reaction nullity.",
+      "test": "Prove a rank lower bound after tensoring with the rationals and exhibit the Smith tail construction.",
+      "importance": 0.95,
+      "novelty": 0.9,
+      "refutability": 0.9,
+      "depends_on": ["DH01", "DS03"]
+    },
+    {
+      "id": "DH03",
+      "track": "smith_integer",
+      "claim": "Smith invariant factors greater than one encode lot-size or modular reachability restrictions that rational rank misses.",
+      "test": "Use a mint-two reaction matrix with full rational row rank and reject an odd total effect.",
+      "importance": 0.9,
+      "novelty": 0.8,
+      "refutability": 1.0,
+      "depends_on": ["DS03"]
+    },
+    {
+      "id": "DH04",
+      "track": "smith_integer",
+      "claim": "Conformally minimal integer-kernel relations can compile into smallest high-value authority-witness counterexamples.",
+      "test": "Enumerate bounded primitive relations and split positive and negative parts into equal-effect witnesses.",
+      "importance": 0.9,
+      "novelty": 0.9,
+      "refutability": 1.0,
+      "depends_on": ["DS01", "DS02"]
+    },
+    {
+      "id": "DH05",
+      "track": "smith_integer",
+      "claim": "Toric witness normalization is safe only under a governed proof that every erased kernel relation is observationally inert.",
+      "test": "Find an equal-effect relation that changes exact facts, capacity, fees, or footprint.",
+      "importance": 1.0,
+      "novelty": 0.9,
+      "refutability": 1.0,
+      "depends_on": ["DS01", "DS02", "DS05"]
+    },
+    {
+      "id": "DH06",
+      "track": "authority_coverage",
+      "claim": "Affine, capacity, persistent, and indivisible-bundle facts require distinct usage laws inside one context-indexed partial resource algebra.",
+      "test": "Prove defined composition laws and generate reuse, overflow, stale-context, and split-bundle counterexamples.",
+      "importance": 1.0,
+      "novelty": 0.85,
+      "refutability": 1.0,
+      "depends_on": ["DS04", "DS06"]
+    },
+    {
+      "id": "DH07",
+      "track": "authority_coverage",
+      "claim": "Separable capacity coverage is integral max-flow, while indivisible aggregate coverage is exact bundle selection and must not be relaxed to flow.",
+      "test": "Replay flow and bundle certificates and construct a bundle-splitting false acceptance.",
+      "importance": 1.0,
+      "novelty": 0.85,
+      "refutability": 1.0,
+      "depends_on": ["DS04", "DS05"]
+    },
+    {
+      "id": "DH08",
+      "track": "authority_coverage",
+      "claim": "Effect plus cycle grade still cannot replace the exact fact manifest because different governed facts may authorize the same reaction witness.",
+      "test": "Substitute fact identity while keeping reaction counts, effect, and grade unchanged.",
+      "importance": 1.0,
+      "novelty": 0.8,
+      "refutability": 1.0,
+      "depends_on": ["DS05"]
+    },
+    {
+      "id": "DH09",
+      "track": "concurrency",
+      "claim": "A canonical dependency DAG yields one semantic identity for all linear extensions admitted by an authority-aware independence relation.",
+      "test": "Enumerate schedules, compare one DAG root, then add resource, fact, capacity, footprint, or context conflict.",
+      "importance": 1.0,
+      "novelty": 0.85,
+      "refutability": 1.0,
+      "depends_on": ["DS07", "DS08"]
+    },
+    {
+      "id": "DH10",
+      "track": "concurrency",
+      "claim": "Proof-tree topology is a provenance identity and must not define the semantic transition identity.",
+      "test": "Construct multiple recursive binary trees over one semantic dependency DAG.",
+      "importance": 0.95,
+      "novelty": 0.8,
+      "refutability": 1.0,
+      "depends_on": ["DS07", "DS08"]
+    },
+    {
+      "id": "DH11",
+      "track": "concurrency",
+      "claim": "Parallel and sequential composition satisfy interchange only after explicit context, capacity, footprint, and state-continuity side conditions.",
+      "test": "Prove the additive equality and kill one admission condition per mutant.",
+      "importance": 0.9,
+      "novelty": 0.85,
+      "refutability": 0.95,
+      "depends_on": ["DS04", "DS08"]
+    },
+    {
+      "id": "DH12",
+      "track": "cryptographic_refinement",
+      "claim": "A proof that commits to its own kind table proves self-consistency, not selection of the governed accounting basis.",
+      "test": "Substitute a known-relation basis and compare self-commitment with expected-root binding.",
+      "importance": 1.0,
+      "novelty": 0.85,
+      "refutability": 1.0,
+      "depends_on": ["DS09", "DS10"]
+    },
+    {
+      "id": "DH13",
+      "track": "cryptographic_refinement",
+      "claim": "ARM private accounting refines typed ZRM rows only under an explicit computational basis-binding assumption and exact governed statement binding.",
+      "test": "State the assumption separately, prove conditional refinement, and construct known-relation countermodels.",
+      "importance": 1.0,
+      "novelty": 0.95,
+      "refutability": 0.9,
+      "depends_on": ["DS09", "DS10"]
+    },
+    {
+      "id": "DH14",
+      "track": "cryptographic_refinement",
+      "claim": "A total semantic delta carrier must admit zero; a nonzero signing-key type cannot define semantic composition.",
+      "test": "Compose a nonzero scalar with its inverse and compare parenthesization domains.",
+      "importance": 0.9,
+      "novelty": 0.8,
+      "refutability": 1.0,
+      "depends_on": ["DS10"]
+    },
+    {
+      "id": "DH15",
+      "track": "formal_verification",
+      "claim": "Generated Smith, max-flow, bundle, Morph, and SMT evidence should be accepted only through smaller independent replay checkers.",
+      "test": "Mutate every certificate field and ensure the checker rejects without consulting generator conclusions.",
+      "importance": 1.0,
+      "novelty": 0.8,
+      "refutability": 1.0,
+      "depends_on": ["DS11", "DS12"]
+    },
+    {
+      "id": "DH16",
+      "track": "formal_verification",
+      "claim": "Lean should prove algebraic structure and implementation-independent theorems while cryptographic hardness remains an explicit external assumption.",
+      "test": "Audit the theorem set for hidden injectivity axioms and prove known-relation countermodels separately.",
+      "importance": 1.0,
+      "novelty": 0.8,
+      "refutability": 0.9,
+      "depends_on": ["DS11", "DS12"]
+    },
+    {
+      "id": "DH17",
+      "track": "runtime_commit",
+      "claim": "A proof-valid authority shard authorizes at most a pure commit plan and cannot establish freshness at the linearization point or durable success.",
+      "test": "Race a valid plan against a state update and require confirmed no-write conflict or indeterminate outcome.",
+      "importance": 1.0,
+      "novelty": 0.85,
+      "refutability": 1.0,
+      "depends_on": ["DS13", "DS14"]
+    },
+    {
+      "id": "DH18",
+      "track": "runtime_commit",
+      "claim": "Unknown durable outcome is semantically distinct from confirmed no-write conflict and must remain retry-safe.",
+      "test": "Lose an acknowledgement after a durable write and prohibit effect reapplication.",
+      "importance": 1.0,
+      "novelty": 0.8,
+      "refutability": 1.0,
+      "depends_on": ["DS13"]
+    },
+    {
+      "id": "DH19",
+      "track": "runtime_commit",
+      "claim": "Context transport is a governed vertical morphism and cannot be implemented as relabeling equal application effects.",
+      "test": "Change source summary, target context, profile, or activation and require rejection.",
+      "importance": 0.95,
+      "novelty": 0.9,
+      "refutability": 1.0,
+      "depends_on": ["DS13", "DS14"]
+    },
+    {
+      "id": "DH20",
+      "track": "formal_verification",
+      "claim": "The strongest current architecture is an indexed partial double-resource structure with tensor for admitted independence, ordered state-continuous composition, and explicit context transport.",
+      "test": "Formalize units, associativity, interchange, transport identity, and transport composition under exact side conditions.",
+      "importance": 0.9,
+      "novelty": 1.0,
+      "refutability": 0.8,
+      "depends_on": ["DS04", "DS07", "DS08"]
+    }
+  ]
+}
