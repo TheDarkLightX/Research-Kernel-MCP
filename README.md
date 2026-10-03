@@ -268,3 +268,8 @@ pytest -q tests/internal/test_research_kernel_mcp.py
 
 Research Kernel MCP is licensed under the Apache License, Version 2.0. See
 the repository root `LICENSE` file.
+
+
+## Hosted shared scientific memory pilot
+
+A Sites-compatible FCIS companion adds private team workspaces, revision-bound claims, bounded checker receipts, selected package exchange, negative result memory and a non-monetary contribution ledger. See [the pilot documentation](docs/SHARED_MEMORY_PILOT.md). The Python kernel retains its existing tools and adds selected-output export/import bridges.
