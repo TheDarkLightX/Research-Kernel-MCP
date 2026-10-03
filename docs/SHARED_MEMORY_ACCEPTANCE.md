@@ -123,8 +123,8 @@ contribution record. The three checks consumed 243 cases: 121 + 1 + 121.
 
 The full private transcript, backup, independent verifier and source bytes were
 preserved in `Research-Kernel-MCP-acceptance-2026-10-03.zip`.
-Archive SHA-256: `38ddd7e0069d330e7bd277d603449a0df73382ebccef2df95e4104cf683a88b5`.
-Transcript SHA-256: `07e9b218cab3963bde1a1be16d1e801a07b84479d03120f868e6c15ca39a642d`.
+Archive SHA-256: `27c52f75cf3b0e112a0937661fdb425a6137f018757dddba1d46c78a75062b41`.
+Transcript SHA-256: `a8778e7630029d09b1865e957557051558edb68241851a51e0b5c0cf68cc1c9d`.
 The archive includes account-bound backup data and remains private; only
 synthetic results and non-identifying receipt bindings appear here.
 
@@ -142,9 +142,11 @@ remaining surfaces have not passed acceptance:
 - **Real authenticated browser/WebMCP:** the live Site opened to **Log in to
   access**. Real WebMCP discovery on that signed-out document returned **No
   WebMCP tools are available in this document.** Following its visible
-  **Continue with ChatGPT** link reached OpenAI's sign-in screen; authentication
-  has not been completed. This is no evidence about registrations in the
-  authenticated application, and no browser-side research tool was executed.
+  **Continue with ChatGPT** link reached OpenAI's sign-in screen. A secure
+  sign-in request returned `submitted` with Google selected, but the next visible
+  page was **Session ended**, reporting **invalid_state** and an expired sign-in
+  session. The authenticated Site application was not reached. This is no
+  evidence about its registrations, and no browser-side research tool was executed.
 
 The Site inspection confirmed published version 3 and an owner-only custom
 audience: one allowed account, no editors/groups/external visitors, unchanged
