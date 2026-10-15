@@ -1,0 +1,79 @@
+name: AIRA v2 Research Kernel
+
+on:
+  push:
+    branches: ["agent/aira-v2-research-run"]
+    paths: ["examples/aira_v2/**", "tests/internal/test_aira_v2_research_run.py", ".github/workflows/aira-v2-research.yml", "internal/research_kernel_mcp/**"]
+  pull_request:
+    paths: ["examples/aira_v2/**", "tests/internal/test_aira_v2_research_run.py", ".github/workflows/aira-v2-research.yml", "internal/research_kernel_mcp/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONHASHSEED: "0"
+
+jobs:
+  research-kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Install test runner
+        run: python3 -m pip install pytest
+      - name: Run Research Kernel self-test
+        run: python3 internal/research_kernel_mcp/server.py --self-test
+      - name: Run AIRA research program
+        run: |
+          set -euo pipefail
+          rm -rf artifacts/aira-v2-research
+          mkdir -p artifacts
+          python3 examples/aira_v2/run_research_kernel.py --home artifacts/aira-v2-research 2>&1 | tee artifacts/aira-v2-run-console.log
+      - name: Test AIRA integration
+        run: pytest -q tests/internal/test_aira_v2_research_run.py
+      - name: Verify exported report and durable store
+        run: |
+          set -euo pipefail
+          ls -la artifacts/aira-v2-research
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("artifacts/aira-v2-research")
+          required = [
+              root / "research_kernel.sqlite3",
+              root / "events.jsonl",
+              root / "research_kernel_report.json",
+              root / "research_graph.json",
+          ]
+          for path in required:
+              print(f"artifact {path}: exists={path.is_file()} size={path.stat().st_size if path.exists() else 0}")
+              if not path.is_file() or path.stat().st_size == 0:
+                  raise SystemExit(f"missing or empty required artifact: {path}")
+
+          report = json.loads((root / "research_kernel_report.json").read_text(encoding="utf-8"))
+          print("schema:", report.get("schema"))
+          supported_ids = [item.get("id") for item in report.get("supported_claims", [])]
+          print("supported IDs:", supported_ids)
+          print("frontier count:", len(report.get("frontier", [])))
+          if report.get("schema") != "research_kernel/report/v1":
+              raise SystemExit("unexpected report schema")
+          if "aira_claim_provenance_not_output" not in supported_ids:
+              raise SystemExit("narrow provenance claim did not pass the support gate")
+          if not report.get("frontier"):
+              raise SystemExit("research frontier is unexpectedly empty")
+          PY
+      - name: Upload Research Kernel evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: aira-v2-research-kernel
+          path: |
+            artifacts/aira-v2-research/**
+            artifacts/aira-v2-run-console.log
+          if-no-files-found: warn
+          retention-days: 30
