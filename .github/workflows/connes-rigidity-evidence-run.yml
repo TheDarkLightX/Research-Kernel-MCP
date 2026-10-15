@@ -1,0 +1,33 @@
+name: Research Kernel Connes rigidity evidence run
+
+on:
+  push:
+    branches:
+      - agent/connes-rigidity-evidence-run-20260804
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-ledger:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Run fail-closed evidence ledger
+        env:
+          PYTHONPATH: .
+        run: python experiments/connes_rigidity_evidence_run.py
+      - name: Upload evidence report
+        uses: actions/upload-artifact@v4
+        with:
+          name: connes-rigidity-research-kernel
+          path: connes-rigidity-research-kernel.json
+          if-no-files-found: error
+          retention-days: 14
