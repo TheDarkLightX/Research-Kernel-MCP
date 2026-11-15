@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { checkRecipe, type Recipe } from "../lib/core/checker";
 import { canonical, current, createWorkspace, claimStatus, hasFailureHistory, matchesClaimQuery, type Workspace, type Actor, type Context, type Command, type ClaimInput } from "../lib/core/model";
 import { transition, publicationDigest } from "../lib/core/transition";
+import { negativeInsights, queryNegativeInsights } from "../lib/core/negative-memory";
 import { sha256 } from "../lib/hash";
 import { CHECKER_SOURCE_SHA256 } from "../lib/checker-pin";
 import { owner, editor, reader, recipe, input } from "./fixtures";
@@ -106,4 +107,51 @@ test("email invitation acceptance binds the verified account identity", () => {
   let w = apply(base(), { type: "invite", email: "Reader@example.test", role: "reader" }, "invite");
   assert.equal(transition(w, { type: "join" }, context("wrong", { ...reader, email: "other@example.test" }), sha256).decision, "reject");
   w = apply(w, { type: "join" }, "join", reader); assert.equal(w.members.find(m => m.userId === reader.userId)?.role, "reader"); assert.equal(w.invitations.length, 0);
+});
+
+test("typed hard and soft negatives preserve original scope and never infer family pruning", () => {
+  const failed = { ...input, title: "Attempt without the cross term", scope: "original finite search domain", recipe: { ...recipe, right: "x^2+y^2" } };
+  let w = apply(createWorkspace("w", "Lab", owner), { type: "addClaim", claim: failed }, "a");
+  const oldHash = current(w.claims[0]).hash;
+  w = apply(w, { type: "checkClaim", claimId: "a", expectedHash: oldHash }, "checked-obstruction");
+  const record = {
+    attempt: "Try polynomial terms without a cross product",
+    failureReason: "The missing interaction may prevent representing mixed terms.",
+    scope: "representation with no cross products",
+    assumptions: "two-variable quadratic expressions",
+    observedCounterexample: "x=-5,y=-5 (reported in research notes)",
+    candidateGeneralization: "Maybe all additive-only representations fail",
+    alternativeRepresentation: "Introduce a product feature x*y",
+    revisitWhen: ["A richer feature language becomes available"],
+  };
+  const cmd: Command = { type: "recordNegative", claimId: "a", expectedHash: oldHash, record, uri: "", artifactHash: null };
+  w = apply(w, cmd, "reasoned-failure");
+  const insightsBefore = negativeInsights(w);
+  assert.equal(insightsBefore.length, 2);
+  const hard = insightsBefore.find(i => i.classification === "hard")!;
+  const soft = insightsBefore.find(i => i.classification === "soft")!;
+  assert.equal(hard.authority, "bounded-check-only");
+  assert.equal(hard.checkedWitness!.inputs.x, -5);
+  assert.equal(hard.source.transcriptHash, w.receipts[0].transcriptHash);
+  assert.equal(hard.exclusion.safeToPrune, true);
+  assert.equal(hard.exclusion.generalizedPruningAuthorized, false);
+  assert(hard.exclusion.appliesOnlyTo.includes(oldHash));
+  assert.equal(soft.authority, "unverified");
+  assert.equal(soft.exclusion.safeToPrune, false);
+  assert.equal(soft.exclusion.generalizedPruningAuthorized, false);
+  assert.equal(soft.candidateGeneralization, record.candidateGeneralization);
+  assert.equal(soft.revisitWhen[0], record.revisitWhen[0]);
+  assert.equal(soft.information.rankingAuthority, "discovery-triage-only");
+  assert.deepEqual(queryNegativeInsights(w, "richer feature language").map(i => i.id), [soft.id]);
+  assert.equal(transition(w, { ...cmd, record: { ...record, classification: "hard" } }, context("forged"), sha256).decision, "reject");
+
+  w = apply(w, { type: "reviseClaim", claimId: "a", expectedHash: oldHash, claim: input }, "repair");
+  w = apply(w, { type: "checkClaim", claimId: "a", expectedHash: current(w.claims[0]).hash }, "correct-check");
+  assert.equal(claimStatus(w, w.claims[0]), "bounded-checked");
+  const after = negativeInsights(w);
+  assert.equal(after.length, 2);
+  assert(after.every(i => i.originalRevision === oldHash && i.currentRevision !== oldHash));
+  assert(after.every(i => i.currentStatus === "bounded-checked"));
+  assert.equal(queryNegativeInsights(w, "", "hard").length, 1);
+  assert.equal(queryNegativeInsights(w, "", "soft").length, 1);
 });
