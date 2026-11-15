@@ -60,7 +60,9 @@ export function transition(before: Workspace, raw: unknown, ctx: Context, hash: 
     } else if (cmd.type === "invite") {
       const email = cmd.email.toLowerCase();
       if (state.members.some(m => m.email.toLowerCase() === email)) return reject("already-member", "This account is already a member.");
-      if (state.members.length + state.invitations.length >= 30) return reject("capacity", "At most 30 accounts per pilot workspace.");
+      const alreadyInvited = state.invitations.some(i => i.email === email);
+      // Replacing a pending invitation changes only its role, not capacity.
+      if (!alreadyInvited && state.members.length + state.invitations.length >= 30) return reject("capacity", "At most 30 accounts per pilot workspace.");
       state.invitations = state.invitations.filter(i => i.email !== email);
       state.invitations.push({ email, role: cmd.role });
       result = { email, role: cmd.role, delivery: "No email was sent. The account also needs access to the Site." };
