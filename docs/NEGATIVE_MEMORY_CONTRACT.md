@@ -109,6 +109,24 @@ Unverified negative records request transitive dependent review, as before,
 but never change a source claim's bounded-check status or synthesize a proof.
 The snapshot and event journal preserve the original append-only evidence.
 
+## Python stdio MCP compatibility
+
+The Python stdio kernel also exposes `rk_negative_record` and
+`rk_negative_memory`. Its typed soft record is stored as a `RISK` atom
+with `negative_memory/v1` metadata, linked through `TESTS`, and does not
+refute its target. Existing `rk_refute` calls are retained without changing
+their historical status transitions.
+
+Unlike the hosted checker, the Python kernel has **no machine-validated
+counterexample receipt in this interface**. Therefore even an old
+`counterexample_is_actual=true` entry remains a reported **soft** negative
+for retrieval; querying for `hard` there returns no results. The caller's
+flag cannot turn an assertion into a theorem.
+
+The two interfaces use different storage, version guards, and schemas.
+They do not sync automatically. Both preserve the difference between
+unverified hypotheses and checked evidence.
+
 ## Limitations and next research steps
 
 - The integer-grid checker reports a **deterministic first mismatch**, not a
