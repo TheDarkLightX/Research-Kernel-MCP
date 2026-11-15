@@ -54,7 +54,9 @@ function evaluate(e: Expr, inputs: Record<string, number>): bigint {
     case "^": if (b < 0n || b > 8n) throw new Error("Exponent must be in 0..8."); r = a ** b; break;
     default: throw new Error("Unsupported operator.");
   }
-  if (r.toString(2).length > 256) throw new Error("Arithmetic exceeds the 256-bit bound.");
+  // Count magnitude bits, not the '-' sign. A negative value of magnitude
+  // exactly 256 bits must obey the same bound as its positive counterpart.
+  if ((r < 0n ? -r : r).toString(2).length > 256) throw new Error("Arithmetic exceeds the 256-bit bound.");
   return r;
 }
 export function checkRecipe(recipe: Recipe, hash: (value: string) => string): CheckResult {

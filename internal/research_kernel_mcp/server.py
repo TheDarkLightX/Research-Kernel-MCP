@@ -368,6 +368,53 @@ async def rk_refute(
 
 
 @_tool()
+async def rk_negative_record(
+    ctx: Context,
+    run_id: str,
+    target_atom_id: str,
+    attempt: str,
+    failure_reason: str,
+    scope: str,
+    assumptions: str = "",
+    observed_counterexample: str = "",
+    candidate_generalization: str = "",
+    alternative_representation: str = "",
+    revisit_when_json: str = "",
+) -> str:
+    """Preserve an informative SOFT failure; caller text cannot certify an impossibility."""
+    out = _kernel().negative_record(
+        run_id=run_id,
+        target_atom_id=target_atom_id,
+        attempt=attempt,
+        failure_reason=failure_reason,
+        scope=scope,
+        assumptions=assumptions,
+        observed_counterexample=observed_counterexample,
+        candidate_generalization=candidate_generalization,
+        alternative_representation=alternative_representation,
+        revisit_when=[str(x) for x in parse_json_list(revisit_when_json, field="revisit_when_json")],
+    )
+    await _progress(ctx, f"Soft negative recorded: {out['atom']['id']}")
+    return _json(out)
+
+
+@_tool()
+async def rk_negative_memory(
+    ctx: Context,
+    run_id: str = "",
+    query: str = "",
+    classification: str = "all",
+    limit: int = 50,
+) -> str:
+    """Retrieve retained negative memory, information gaps and next validation actions."""
+    out = _kernel().negative_memory(
+        run_id=run_id or None, query=query, classification=classification, limit=limit,
+    )
+    await _progress(ctx, f"Historical negative records: {len(out['insights'])}")
+    return _json(out)
+
+
+@_tool()
 async def rk_evidence_attach(
     ctx: Context,
     run_id: str,

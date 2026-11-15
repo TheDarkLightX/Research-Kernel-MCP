@@ -60,7 +60,9 @@ export function transition(before: Workspace, raw: unknown, ctx: Context, hash: 
     } else if (cmd.type === "invite") {
       const email = cmd.email.toLowerCase();
       if (state.members.some(m => m.email.toLowerCase() === email)) return reject("already-member", "This account is already a member.");
-      if (state.members.length + state.invitations.length >= 30) return reject("capacity", "At most 30 accounts per pilot workspace.");
+      const alreadyInvited = state.invitations.some(i => i.email === email);
+      // Replacing a pending invitation changes only its role, not capacity.
+      if (!alreadyInvited && state.members.length + state.invitations.length >= 30) return reject("capacity", "At most 30 accounts per pilot workspace.");
       state.invitations = state.invitations.filter(i => i.email !== email);
       state.invitations.push({ email, role: cmd.role });
       result = { email, role: cmd.role, delivery: "No email was sent. The account also needs access to the Site." };
@@ -108,6 +110,17 @@ export function transition(before: Workspace, raw: unknown, ctx: Context, hash: 
         const next = revision(cmd.claim, state, ctx, hash, r.number + 1);
         claim.revisions.push(next); claim.needsReview = dependencyIssue(next, state);
         result = { claimId: claim.id, revisionHash: next.hash, affectedClaims: flagDependents(state, claim.id) };
+      } else if (cmd.type === "recordNegative") {
+        if (state.evidence.length >= 400) return reject("capacity", "At most 400 evidence entries per workspace.");
+        if (cmd.uri && !/^(https?:\/\/|doi:|rk-package:)/i.test(cmd.uri)) return reject("invalid-uri", "Use an http(s) URL, doi: or rk-package: reference.");
+        // Caller-supplied descriptions are soft memory, never checked impossibility claims.
+        state.evidence.push({
+          id: ctx.id, claimId: claim.id, revisionHash: r.hash, kind: "negative",
+          uri: cmd.uri, summary: cmd.record.failureReason, artifactHash: cmd.artifactHash,
+          author: ctx.actor.userId, createdAt: ctx.now, authority: "unverified",
+          negative: cmd.record,
+        });
+        result = { evidenceId: ctx.id, classification: "soft", authority: "unverified", affectedClaims: flagDependents(state, claim.id) };
       } else if (cmd.type === "attachEvidence") {
         if (state.evidence.length >= 400) return reject("capacity", "At most 400 evidence entries per workspace.");
         if (cmd.uri && !/^(https?:\/\/|doi:|rk-package:)/i.test(cmd.uri)) return reject("invalid-uri", "Use an http(s) URL, doi: or rk-package: reference.");

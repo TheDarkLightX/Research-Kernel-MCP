@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { claimSchema, commandSchema, publicationSchema } from "./core/validation";
-import { current, claimStatus, hasFailureHistory, matchesClaimQuery, type Actor, type Command } from "./core/model";
+import { claimSchema, commandSchema, publicationSchema, softNegativeSchema } from "./core/validation";
+import { current, claimStatus, type Actor, type Command } from "./core/model";
+import { queryNegativeInsights } from "./core/negative-memory";
 import { AppError, type ResearchStore } from "./store";
 const empty = z.object({}).strict(), id = z.string().min(1).max(100);
 const mutation = { workspaceId: id, expectedRevision: z.number().int().min(0), requestId: z.string().uuid() };
@@ -18,11 +19,19 @@ export const researchTools: Tool[] = [
   { name: "rk_claim_revise", title: "Revise research claim", description: "Create a new immutable revision using the expected current hash. Mark transitive dependents for review and preserve old receipts.", schema: z.object({ ...mutation, ...target, claim: claimSchema }).strict(), readOnly: false, handler: (v, s, a) => execute(v, { type: "reviseClaim", claimId: v.claimId, expectedHash: v.expectedHash, claim: v.claim }, s, a) },
   { name: "rk_evidence_attach", title: "Attach unverified evidence", description: "Attach a source assertion to the exact current claim revision. Caller-declared proof, experiment and artifact data remain unverified.", schema: z.object({ ...mutation, ...target, kind: z.enum(["source", "experiment", "formal", "negative"]), uri: z.string().max(2000), summary: z.string().min(3).max(4000), artifactHash: z.string().regex(/^[a-f0-9]{64}$/).nullable() }).strict(), readOnly: false, handler: (v, s, a) => execute(v, { type: "attachEvidence", claimId: v.claimId, expectedHash: v.expectedHash, kind: v.kind, uri: v.uri, summary: v.summary, artifactHash: v.artifactHash }, s, a) },
   { name: "rk_check", title: "Run bounded checker", description: "Execute the exact integer-grid recipe for a current bounded claim, saving a source-pinned, revision-bound transcript receipt. Maximum 2,048 cases. A pass covers the recipe and grid only; it does not prove the prose statement, a theorem, or experimental replication.", schema: z.object({ ...mutation, ...target }).strict(), readOnly: false, handler: (v, s, a) => execute(v, { type: "checkClaim", claimId: v.claimId, expectedHash: v.expectedHash }, s, a) },
-  { name: "rk_negative_memory", title: "Find counterexamples", description: "Find retained counterexamples and negative evidence across all revisions, including corrected claims. Returns original claim scope and current status; an old failure does not refute a newer revision.", schema: z.object({ workspaceId: id, query: z.string().max(500).optional() }).strict(), readOnly: true, handler: async (v, s, a) => {
+  { name: "rk_negative_record", title: "Record an informative failed approach", description: "Save structured SOFT negative memory: attempted idea, reason, scope, assumptions, possible witness, speculative generalization, alternative representation and revisit conditions. This is unverified advice, NEVER a proof or sound pruning rule. Dependents are marked for review.", schema: z.object({ ...mutation, ...target, record: softNegativeSchema, uri: z.string().max(2000), artifactHash: z.string().regex(/^[a-f0-9]{64}$/).nullable() }).strict(), readOnly: false, handler: (v, s, a) => execute(v, { type: "recordNegative", claimId: v.claimId, expectedHash: v.expectedHash, record: v.record, uri: v.uri, artifactHash: v.artifactHash }, s, a) },
+  { name: "rk_negative_memory", title: "Retrieve informative negative memory", description: "Search every historical claim revision for (hard) pinned bounded counterexample receipts and (soft) unverified failures. Returns the original scope, assumptions, explanatory metadata, ranking of information completeness and next validation action. Hard excludes only the exact checked recipe; family-level pruning is NEVER inferred.", schema: z.object({ workspaceId: id, query: z.string().max(500).optional(), classification: z.enum(["all", "hard", "soft"]).optional() }).strict(), readOnly: true, handler: async (v, s, a) => {
     const w = await s.read(v.workspaceId, a);
-    const claims = w.claims.filter(c => hasFailureHistory(w, c) && matchesClaimQuery(w, c, v.query ?? "", true));
-    const ids = new Set(claims.map(c => c.id));
-    return { revision: w.revision, claims: claims.map(c => ({ ...c, status: claimStatus(w, c) })), counterexamples: w.receipts.filter(r => ids.has(r.claimId) && r.result.outcome === "counterexample"), negativeEvidence: w.evidence.filter(e => ids.has(e.claimId) && e.kind === "negative") };
+    const insights = queryNegativeInsights(w, v.query ?? "", v.classification ?? "all");
+    const ids = new Set(insights.map(i => i.claimId));
+    const receiptIds = new Set(insights.filter(i => i.source.receiptId).map(i => i.source.receiptId));
+    const evidenceIds = new Set(insights.filter(i => i.source.evidenceId).map(i => i.source.evidenceId));
+    return {
+      revision: w.revision, claims: w.claims.filter(c => ids.has(c.id)).map(c => ({ ...c, status: claimStatus(w, c) })),
+      counterexamples: w.receipts.filter(r => receiptIds.has(r.id)),
+      negativeEvidence: w.evidence.filter(e => evidenceIds.has(e.id)),
+      insights, rankMeaning: "Deterministic information-completeness triage, not a truth score or a general impossibility proof.",
+    };
   } },
   { name: "rk_frontier", title: "Research review frontier", description: "List unresolved claims and stale dependencies that need another research cycle.", schema: z.object({ workspaceId: id }).strict(), readOnly: true, handler: async (v, s, a) => { const w = await s.read(v.workspaceId, a); return { revision: w.revision, claims: w.claims.filter(c => ["unverified", "needs-review"].includes(claimStatus(w, c))).map(c => ({ id: c.id, revisionHash: current(c).hash, title: current(c).title, status: claimStatus(w, c), dependencies: current(c).dependencyHashes })) }; } },
   { name: "rk_package_publish", title: "Publish selected package", description: "Owner-only: create a CC BY 4.0 evidence package in the Site's shared catalog. Includes this claim revision, evidence summaries, source links and receipts; no personal account identities. Ensure the user intends to share and license these selected contents. Site access policy still applies.", schema: z.object({ ...mutation, ...target }).strict(), readOnly: false, publication: true, handler: (v, s, a) => execute(v, { type: "publishClaim", claimId: v.claimId, expectedHash: v.expectedHash }, s, a) },

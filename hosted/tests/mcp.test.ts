@@ -15,7 +15,7 @@ test("stateless MCP initialization negotiates versions and discovery is free of 
   const db = new SqliteD1(), s = new ResearchStore(db.port()), deps = { authenticate: async () => owner, store: () => s };
   const init = await handleMcp(req("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } }), deps); const v: any = await init.json();
   assert.equal(init.status, 200); assert.equal(v.result.protocolVersion, "2025-06-18");
-  const discovery: any = await (await handleMcp(req("tools/list"), deps)).json(); assert.equal(discovery.result.tools.length, 17); assert(!JSON.stringify(discovery).includes(owner.email));
+  const discovery: any = await (await handleMcp(req("tools/list"), deps)).json(); assert.equal(discovery.result.tools.length, 18); assert(!JSON.stringify(discovery).includes(owner.email));
   assert.deepEqual(toolDiscovery().find(t => t.name === "rk_open_memory")!._meta!["openai/ui"].entrypoints, [{ type: "global" }, { type: "thread" }]); db.close();
 });
 test("missing user identity and unauthorized membership produce HTTP 401/403", async () => {
@@ -59,5 +59,34 @@ test("negative-memory search returns original context after a failed claim is co
   assert.equal(result.counterexamples[0].claimRevision, failedHash);
   const absent: any = (await callResearchTool("rk_negative_memory", { workspaceId: w.id, query: "unrelated approach" }, s, owner)).structuredContent;
   assert.equal(absent.claims.length, 0); assert.equal(absent.counterexamples.length, 0);
+  db.close();
+});
+
+test("MCP negative-record requires detailed soft evidence and cannot mint checker authority", async () => {
+  const db = new SqliteD1(), s = new ResearchStore(db.port());
+  let w = await s.create("Negative discovery", randomUUID(), owner);
+  w = (await s.execute(w.id, 0, randomUUID(), { type: "addClaim", claim: input }, owner)).workspace;
+  const h = w.claims[0].revisions[0].hash;
+  const record = {
+    attempt: "Express the equality without the product term",
+    failureReason: "An interaction feature is missing.",
+    scope: "additive feature language",
+    assumptions: "integer input domain",
+    observedCounterexample: "",
+    candidateGeneralization: "All additive-only candidates might fail",
+    alternativeRepresentation: "x*y feature",
+    revisitWhen: ["After introducing cross-product features"],
+  };
+  const args = { workspaceId: w.id, expectedRevision: w.revision, requestId: randomUUID(), claimId: w.claims[0].id, expectedHash: h, record, uri: "", artifactHash: null };
+  await assert.rejects(callResearchTool("rk_negative_record", { ...args, record: { ...record, claimedAuthority: "formal" } }, s, owner), e => e instanceof AppError && e.code === "invalid-arguments");
+  const saved: any = (await callResearchTool("rk_negative_record", args, s, owner)).structuredContent;
+  assert.equal(saved.result.classification, "soft");
+  assert.equal(saved.result.authority, "unverified");
+  const negatives: any = (await callResearchTool("rk_negative_memory", { workspaceId: w.id, query: "cross-product", classification: "soft" }, s, owner)).structuredContent;
+  assert.equal(negatives.insights.length, 1);
+  assert.equal(negatives.insights[0].exclusion.safeToPrune, false);
+  assert.equal(negatives.insights[0].alternativeRepresentation, "x*y feature");
+  const hard: any = (await callResearchTool("rk_negative_memory", { workspaceId: w.id, classification: "hard" }, s, owner)).structuredContent;
+  assert.equal(hard.insights.length, 0);
   db.close();
 });

@@ -16,10 +16,21 @@ const revisionSchema = z.object({
   ...claimSchema.innerType().shape, number: z.number().int().min(1), hash,
   author: id, createdAt: z.string().max(100), dependencyHashes: z.record(id, hash),
 }).strict();
+export const softNegativeSchema = z.object({
+  attempt: z.string().trim().min(3).max(1000),
+  failureReason: z.string().trim().min(3).max(1500),
+  scope: z.string().trim().min(3).max(1000),
+  assumptions: z.string().max(1000),
+  observedCounterexample: z.string().max(1000),
+  candidateGeneralization: z.string().max(1000),
+  alternativeRepresentation: z.string().max(1000),
+  revisitWhen: z.array(z.string().trim().min(3).max(200)).max(8),
+}).strict();
 const evidenceSchema = z.object({
   id, claimId: id, revisionHash: hash, kind: z.enum(["source", "experiment", "formal", "negative"]),
   uri: z.string().max(2000), summary: z.string().max(4000), artifactHash: hash.nullable(),
   author: id, createdAt: z.string().max(100), authority: z.literal("unverified"),
+  negative: softNegativeSchema.optional(),
 }).strict();
 const receiptSchema = z.object({
   id, claimId: id, claimRevision: hash, recipeHash: hash, checker: z.string().max(100), checkerSourceHash: hash, transcriptHash: hash,
@@ -41,6 +52,7 @@ export const commandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("addClaim"), claim: claimSchema }).strict(),
   z.object({ type: z.literal("reviseClaim"), ...target, claim: claimSchema }).strict(),
   z.object({ type: z.literal("attachEvidence"), ...target, kind: evidenceSchema.shape.kind, uri: z.string().max(2000), summary: z.string().trim().min(3).max(4000), artifactHash: hash.nullable() }).strict(),
+  z.object({ type: z.literal("recordNegative"), ...target, record: softNegativeSchema, uri: z.string().max(2000), artifactHash: hash.nullable() }).strict(),
   z.object({ type: z.literal("checkClaim"), ...target }).strict(),
   z.object({ type: z.literal("publishClaim"), ...target }).strict(),
   z.object({ type: z.literal("revokePublication"), publicationId: id }).strict(),
