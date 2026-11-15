@@ -155,3 +155,25 @@ test("typed hard and soft negatives preserve original scope and never infer fami
   assert.equal(queryNegativeInsights(w, "", "hard").length, 1);
   assert.equal(queryNegativeInsights(w, "", "soft").length, 1);
 });
+
+test("256-bit magnitude bound is sign symmetric at its exact boundary", () => {
+  const magnitude = "4294967296^7*2147483648"; // 2^255: 256 magnitude bits
+  const vars = { x: { min: 0, max: 0 } };
+  const positive = checkRecipe({ checker: "integer-grid/v1", variables: vars, left: magnitude, right: magnitude }, sha256);
+  const negative = checkRecipe({ checker: "integer-grid/v1", variables: vars, left: "-(" + magnitude + ")", right: "-(" + magnitude + ")" }, sha256);
+  assert.equal(positive.outcome, "passed");
+  assert.equal(negative.outcome, "passed", "minus sign is not another magnitude bit");
+  const tooLarge = checkRecipe({ checker: "integer-grid/v1", variables: vars, left: "4294967296^8", right: "4294967296^8" }, sha256);
+  assert.equal(tooLarge.outcome, "inconclusive", "2^256 has 257 bits");
+});
+
+test("replacing a pending invitation at capacity does not consume another seat", () => {
+  let w = base();
+  w.invitations = Array.from({ length: 29 }, (_, i) =>
+    ({ email: "person" + i + "@example.test", role: "reader" as const }));
+  assert.equal(w.members.length + w.invitations.length, 30);
+  w = apply(w, { type: "invite", email: "PERSON0@example.test", role: "editor" }, "replace-at-capacity");
+  assert.equal(w.invitations.length, 29);
+  assert.equal(w.invitations.find(i => i.email === "person0@example.test")?.role, "editor");
+  assert.equal(transition(w, { type: "invite", email: "new@example.test", role: "reader" }, context("new-at-capacity"), sha256).decision, "reject");
+});
