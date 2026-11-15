@@ -1,12 +1,20 @@
 # Research Kernel MCP
 
-Research Kernel MCP is a durable, evidence-first research substrate for MCP
-clients. It stores public research artifacts and avoids hidden reasoning traces.
+Research Kernel MCP is an append-only, fail-closed research memory and evidence
+registry for AI assistants using the Model Context Protocol (MCP).
 
-The model stays creative. The kernel stays deterministic:
+## The Core Guarantee: Model Proposes, Rules Decide
 
-- persistent SQLite state;
-- append-only event log;
+Language models can propose claims, hypotheses, reformulations, and next research
+actions. Research Kernel keeps promotion authority in deterministic code. A claim
+cannot become `SUPPORTED` unless its required evidence, provenance, dependency,
+refutation, contradiction-search, and replay gates pass.
+
+The result is a research substrate built for auditability rather than hidden
+agent state:
+
+- persistent SQLite state plus an append-only event log;
+- content-addressed artifacts keyed by SHA-256;
 - typed research atoms and graph edges;
 - source, artifact, benchmark, proof, and counterexample evidence;
 - deterministic Morph-style reformulation templates;
@@ -59,7 +67,10 @@ The model proposes research objects; deterministic rules decide whether claims m
 
 ## Distribution
 
-This repository is prepared for the three main MCP discovery paths:
+This repository is prepared for the three main MCP discovery paths. The launch
+checklist is in [docs/REGISTRY_LAUNCH.md](docs/REGISTRY_LAUNCH.md), including
+the release steps that cannot be completed by a source-code change alone.
+
 
 - **Official MCP Registry:** `server.json` uses the GitHub namespace `io.github.TheDarkLightX/research-kernel-mcp`.
 - **Glama:** `glama.json` declares the repository maintainer for ownership/claiming.
