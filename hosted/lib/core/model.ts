@@ -12,7 +12,13 @@ export type ClaimRevision = ClaimInput & {
   dependencyHashes: Record<string, string>;
 };
 export type Claim = { id: string; revisions: ClaimRevision[]; needsReview: boolean; importedFrom: string | null };
-export type Evidence = { id: string; claimId: string; revisionHash: string; kind: "source" | "experiment" | "formal" | "negative"; uri: string; summary: string; artifactHash: string | null; author: string; createdAt: string; authority: "unverified" };
+// Explanatory, non-authoritative failure records: checkable conclusions must come from receipts.
+export type SoftNegative = {
+  attempt: string; failureReason: string; scope: string; assumptions: string;
+  observedCounterexample: string; candidateGeneralization: string;
+  alternativeRepresentation: string; revisitWhen: string[];
+};
+export type Evidence = { id: string; claimId: string; revisionHash: string; kind: "source" | "experiment" | "formal" | "negative"; uri: string; summary: string; artifactHash: string | null; author: string; createdAt: string; authority: "unverified"; negative?: SoftNegative };
 export type Receipt = {
   id: string; claimId: string; claimRevision: string; recipeHash: string;
   checker: string; checkerSourceHash: string; transcriptHash: string;
@@ -36,6 +42,7 @@ export type Command =
   | { type: "addClaim"; claim: ClaimInput }
   | { type: "reviseClaim"; claimId: string; expectedHash: string; claim: ClaimInput }
   | { type: "attachEvidence"; claimId: string; expectedHash: string; kind: Evidence["kind"]; uri: string; summary: string; artifactHash: string | null }
+  | { type: "recordNegative"; claimId: string; expectedHash: string; record: SoftNegative; uri: string; artifactHash: string | null }
   | { type: "checkClaim"; claimId: string; expectedHash: string }
   | { type: "publishClaim"; claimId: string; expectedHash: string }
   | { type: "revokePublication"; publicationId: string }
