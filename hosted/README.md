@@ -11,10 +11,11 @@ Private, Site-hosted scientific memory, implemented using functional core / impe
 - Transitive review flags after dependency revision, checker failure or a current-revision negative evidence assertion. An unverified objection requests review without changing its source claim’s checker verdict. Old receipts remain tied to their original revisions.
 - Owner-selected CC BY 4.0 packages with canonical digests. Catalog access follows the Site audience. Exporting a package makes an intentionally shareable file; withdrawing cannot recall previously exported copies.
 - Failure memory searches every claim revision, scope and negative evidence summary. Corrected claims retain earlier counterexamples with the original recipe, assumptions and receipt; old failures do not determine the current revision’s status.
+- Two typed negative-memory views: hard negatives derived only from pinned checker counterexamples for the exact tested recipe; soft negatives record failed approaches, root causes, original assumptions, hypotheses about broader failure, alternative representations and reopen triggers. `rk_negative_record` stores soft lessons; `rk_negative_memory` reports both and recommends the next validation action without authorizing general pruning. See [negative-memory contract](../docs/NEGATIVE_MEMORY_CONTRACT.md).
 - Imported claims start unverified; external receipts never become local checker authority.
 - A non-transferable, non-monetary contribution ledger. The first pass or counterexample for a recipe/checker/outcome gets one point per workspace. Identical replays receive no additional points. Usage counts prepare a hosted service for future billing; this pilot charges nothing.
 - Owner-only private snapshot/journal exports and exact pinned-core replay checks. Exported backups include identities and must remain private.
-- 17 stateless Streamable HTTP MCP tools at POST /mcp, plus a MCP App resource with sidebar and conversation-panel entrypoints. Browser WebMCP adapters use the same operations.
+- 18 stateless Streamable HTTP MCP tools at POST /mcp, plus a MCP App resource with sidebar and conversation-panel entrypoints. Browser WebMCP adapters use the same operations.
 
 ## FCIS boundary
 
