@@ -111,6 +111,8 @@ The MCP exposes the compact tool surface from the design spec:
 support evidence, a refutation attempt, dependencies, provenance, contradiction
 search, replay evidence when required, and a rationale.
 
+The hosted companion adds structured **negative discovery memory**: hard negatives are derived only from source-pinned bounded checker counterexamples for the exact tested recipe and original revision; soft negatives preserve attempted approaches, root causes, representation changes and conditions for revisiting them. `rk_negative_record` never grants proof authority. Its read path, `rk_negative_memory`, returns both with deterministic information-completeness triage and explicit generalization obligations. See [docs/NEGATIVE_MEMORY_CONTRACT.md](docs/NEGATIVE_MEMORY_CONTRACT.md). This hosted feature does not silently change the Python stdio kernel's authority model.
+
 `rk_refute` treats `counterexample` text as planning context unless
 `counterexample_is_actual=true` is set. Actual counterexamples create a
 `COUNTEREXAMPLE` atom, add a `REFUTES` edge, and mark the target `REFUTED`.
