@@ -1268,6 +1268,147 @@ class ResearchKernel:
                 )
         return {"ok": True, "refutation_atom": atom, "edge": edge, "actual_counterexample": actual_counterexample}
 
+    def negative_record(
+        self,
+        *,
+        run_id: str,
+        target_atom_id: str,
+        attempt: str,
+        failure_reason: str,
+        scope: str,
+        assumptions: str = "",
+        observed_counterexample: str = "",
+        candidate_generalization: str = "",
+        alternative_representation: str = "",
+        revisit_when: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Append a reasoned failed attempt. User-reported material is always soft."""
+        required = {"attempt": attempt, "failure_reason": failure_reason, "scope": scope}
+        if any(len(str(value).strip()) < 3 for value in required.values()):
+            raise ValueError("attempt, failure_reason, and scope need at least 3 characters")
+        if len(str(attempt)) > 1000 or len(str(failure_reason)) > 1500 or len(str(scope)) > 1000:
+            raise ValueError("negative memory text is too long")
+        triggers = [str(s).strip() for s in (revisit_when or []) if str(s).strip()]
+        if len(triggers) > 8 or any(len(s) > 200 for s in triggers):
+            raise ValueError("at most 8 revisit conditions, each at most 200 characters")
+        with self._connect() as conn:
+            self._get_run(conn, run_id)
+            target = self._get_atom(conn, target_atom_id)
+            if target["run_id"] != run_id:
+                raise ValueError("negative memory target must belong to the same run")
+        note = {
+            "attempt": str(attempt).strip(),
+            "failure_reason": str(failure_reason).strip(),
+            "scope": str(scope).strip(),
+            "assumptions": str(assumptions)[:1000],
+            "observed_counterexample": str(observed_counterexample)[:1000],
+            "candidate_generalization": str(candidate_generalization)[:1000],
+            "alternative_representation": str(alternative_representation)[:1000],
+            "revisit_when": triggers,
+        }
+        atom = self.atom_add(
+            run_id=run_id,
+            atom_type="RISK",
+            content=note["failure_reason"],
+            status="UNDER_TEST",
+            refutability_score=0.9,
+            importance_score=0.8,
+            tags=["negative-memory", "soft-negative"],
+            metadata={"negative_memory/v1": note, "negative_class": "soft", "authority": "unverified"},
+        )["atom"]
+        edge = self.link(
+            run_id=run_id, source_atom_id=atom["id"], target_atom_id=target_atom_id,
+            edge_type="TESTS", rationale="Failed approach retained for review; no refutation authority.",
+        )["edge"]
+        return {"ok": True, "classification": "soft", "authority": "unverified", "atom": atom, "edge": edge}
+
+    def negative_memory(
+        self,
+        *,
+        run_id: str | None = None,
+        query: str = "",
+        classification: str = "all",
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Return historical failures with original scope and epistemic boundary.
+
+        The Python stdio kernel has no independent bounded proof receipt verifier.
+        Consequently all recorded refutation text (including 'actual' witnesses
+        asserted by the caller) is soft; no hard pruning is inferred.
+        """
+        if classification not in {"all", "hard", "soft"}:
+            raise ValueError("classification must be all, hard, or soft")
+        limit_i = max(1, min(200, int(limit)))
+        if classification == "hard":
+            return {"ok": True, "classification": classification, "insights": [], "authority": "no-trusted-verifier"}
+        rows: list[dict[str, Any]] = []
+        with self._connect() as conn:
+            if run_id:
+                self._get_run(conn, run_id)
+            atoms = conn.execute(
+                """SELECT * FROM atoms WHERE type IN ('COUNTEREXAMPLE', 'RISK')
+                   AND (? = '' OR run_id = ?)
+                   ORDER BY created_at DESC, id DESC LIMIT 1000""",
+                (run_id or "", run_id or ""),
+            ).fetchall()
+            for raw in atoms:
+                atom = self._row_atom(raw)
+                note = atom["metadata"].get("negative_memory/v1")
+                if not isinstance(note, dict) and "refutation" not in atom["tags"]:
+                    continue
+                edges = conn.execute(
+                    """SELECT target_atom_id FROM edges
+                       WHERE source_atom_id = ? AND edge_type IN ('TESTS','REFUTES')
+                       ORDER BY id""",
+                    (atom["id"],),
+                ).fetchall()
+                if not edges:
+                    continue
+                for edge in edges:
+                    target = self._row_atom(self._get_atom(conn, edge["target_atom_id"]))
+                    base = note if isinstance(note, dict) else {
+                        "attempt": atom["metadata"].get("strategy", atom["content"]),
+                        "failure_reason": atom["metadata"].get("strategy", "Claimed counterexample"),
+                        "scope": "unspecified (legacy record)",
+                        "assumptions": "unspecified",
+                        "observed_counterexample": atom["content"] if atom["type"] == "COUNTEREXAMPLE" else atom["metadata"].get("counterexample_context", ""),
+                        "candidate_generalization": "",
+                        "alternative_representation": "",
+                        "revisit_when": [],
+                    }
+                    fields = {
+                        "attempt": base.get("attempt", ""),
+                        "failureReason": base.get("failure_reason", ""),
+                        "scope": base.get("scope", ""),
+                        "assumptions": base.get("assumptions", ""),
+                        "reportedWitness": base.get("observed_counterexample", ""),
+                        "candidateGeneralization": base.get("candidate_generalization", ""),
+                        "alternativeRepresentation": base.get("alternative_representation", ""),
+                        "revisitWhen": base.get("revisit_when", []),
+                    }
+                    searchable = canonical_json({"fields": fields, "target": target["content"]}).lower()
+                    if query.strip() and query.strip().lower() not in searchable:
+                        continue
+                    present = [k for k, v in fields.items() if bool(v)]
+                    missing = [k for k, v in fields.items() if not bool(v)]
+                    next_action = (
+                        "Replay and verify the reported witness before pruning any candidate."
+                        if fields["reportedWitness"]
+                        else "Find a reproducible witness; prove any family-wide exclusion separately."
+                    )
+                    rows.append({
+                        "id": atom["id"], "targetAtomId": target["id"],
+                        "classification": "soft", "authority": "unverified",
+                        "originalRunId": atom["run_id"], "targetStatus": target["status"],
+                        "fields": fields, "sourceAtom": atom,
+                        "exclusion": {"safeToPrune": False, "generalizedPruningAuthorized": False},
+                        "information": {"rank": 10 * len(present), "present": present, "missing": missing,
+                                        "nextBestAction": next_action, "rankingAuthority": "discovery-triage-only"},
+                    })
+        rows.sort(key=lambda r: (-r["information"]["rank"], r["id"]))
+        return {"ok": True, "classification": classification, "insights": rows[:limit_i],
+                "authority": "user-assertions-only; no trusted hard negatives"}
+
     def morph(
         self,
         *,
