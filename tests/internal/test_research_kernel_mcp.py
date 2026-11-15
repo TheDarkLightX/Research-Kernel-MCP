@@ -337,3 +337,37 @@ def test_typed_negative_memory_preserves_soft_obstructions_and_revisit_condition
     with pytest.raises(ValueError, match="classification must be"):
         kernel.negative_memory(classification="formal")
 
+
+def test_negative_history_search_not_truncated_by_newer_unrelated_risks(tmp_path: Path) -> None:
+    """The historical match must not disappear beyond a 1,000-atom scan window."""
+    kernel, run_id, _dep_id, claim_id = _run_with_claim(tmp_path)
+    historic = kernel.negative_record(
+        run_id=run_id,
+        target_atom_id=claim_id,
+        attempt="Try the rare historical polynomial encoding",
+        failure_reason="A unique obstruction to an older approach was observed.",
+        scope="Exact historical representation with a unique lookup key",
+        revisit_when=["rare-historical-trigger"],
+    )
+    # Force a strict old timestamp rather than relying on second-resolution
+    # wall-clock ordering or randomly generated atom IDs.
+    with kernel._connect() as conn:
+        conn.execute(
+            "UPDATE atoms SET created_at = ? WHERE id = ?",
+            ("2000-01-01T00:00:00Z", historic["atom"]["id"]),
+        )
+    for i in range(1005):
+        kernel.atom_add(
+            run_id=run_id, atom_type="RISK", content=f"Unrelated newer risk {i}",
+            status="UNDER_TEST",
+        )
+    found = kernel.negative_memory(
+        run_id=run_id, query="rare-historical-trigger", classification="soft", limit=1,
+    )
+    assert len(found["insights"]) == 1
+    assert found["insights"][0]["id"] == historic["atom"]["id"]
+    assert found["insights"][0]["fields"]["revisitWhen"] == ["rare-historical-trigger"]
+    assert kernel.negative_memory(
+        run_id=run_id, query="nonexistent-failure-query", limit=1,
+    )["insights"] == []
+
