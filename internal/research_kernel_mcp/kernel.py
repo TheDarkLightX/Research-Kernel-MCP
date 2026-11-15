@@ -1345,12 +1345,16 @@ class ResearchKernel:
         with self._connect() as conn:
             if run_id:
                 self._get_run(conn, run_id)
+            # Stream the complete historical candidate set. A LIMIT here would
+            # be applied before eligibility and text filtering and could hide
+            # arbitrarily old failures behind unrelated newer RISK atoms.
+            # Bounded top-k selection happens only after matching and ranking.
             atoms = conn.execute(
                 """SELECT * FROM atoms WHERE type IN ('COUNTEREXAMPLE', 'RISK')
                    AND (? = '' OR run_id = ?)
-                   ORDER BY created_at DESC, id DESC LIMIT 1000""",
+                   ORDER BY created_at DESC, id DESC""",
                 (run_id or "", run_id or ""),
-            ).fetchall()
+            )
             for raw in atoms:
                 atom = self._row_atom(raw)
                 note = atom["metadata"].get("negative_memory/v1")
@@ -1405,6 +1409,12 @@ class ResearchKernel:
                         "information": {"rank": 10 * len(present), "present": present, "missing": missing,
                                         "nextBestAction": next_action, "rankingAuthority": "discovery-triage-only"},
                     })
+                    # Keep memory bounded even when a workspace has many
+                    # matching historical failures. Ranking is deterministic:
+                    # highest documented information first, then smallest ID.
+                    if len(rows) > max(400, 2 * limit_i):
+                        rows.sort(key=lambda r: (-r["information"]["rank"], r["id"]))
+                        del rows[limit_i:]
         rows.sort(key=lambda r: (-r["information"]["rank"], r["id"]))
         return {"ok": True, "classification": classification, "insights": rows[:limit_i],
                 "authority": "user-assertions-only; no trusted hard negatives"}
