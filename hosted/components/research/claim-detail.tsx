@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowUpRight, Check, Circle, GitBranch, History, Play, Plus,
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { current, claimStatus, hasFailureHistory, hasNegativeEvidence, type Claim, type Receipt, type Workspace } from "@/lib/core/model";
+import { negativeInsights } from "@/lib/core/negative-memory";
 
 export const kindNames = { hypothesis: "Hypothesis", literature: "Literature assertion", experiment: "Experimental result", formal: "Formal proof claim", bounded: "Bounded integer claim" };
 const statusNames = { unverified: "Unverified", "bounded-checked": "Bounded check passed", counterexample: "Counterexample", "needs-review": "Needs review" };
@@ -31,6 +32,7 @@ export function ClaimDetail({ workspace, claim, canWrite = false, owner = false,
   const receipts = workspace.receipts.filter(r => r.claimId === claim.id && r.claimRevision === revision.hash);
   const evidence = workspace.evidence.filter(e => e.claimId === claim.id && e.revisionHash === revision.hash);
   const status = claimStatus(workspace, claim);
+  const negativeLessons = negativeInsights(workspace).filter(i => i.claimId === claim.id);
   return <section className="claim-detail" aria-label="Claim inspector">
     <div className="inspector-heading"><Button className="back-to-list" variant="ghost" size="sm" onClick={() => { onBack(); requestAnimationFrame(() => document.getElementById("claim-" + claim.id)?.focus({ preventScroll: true })); }}><ArrowLeft />Back to claims</Button><span>{kindNames[revision.kind]}</span><span className="mono">r{revision.number}</span></div>
     <div className="inspector-title"><h2 ref={headingRef} tabIndex={-1}>{revision.title}</h2><div className="toolbar"><Status value={status} />{hasFailureHistory(workspace, claim) && <span className="history-note"><History size={13} />Failure history retained</span>}</div>
@@ -54,6 +56,25 @@ export function ClaimDetail({ workspace, claim, canWrite = false, owner = false,
       </TabsContent>
       <TabsContent value="history" className="inspector-content">
         <p className="muted-copy history-intro">Earlier failures stay with the revision they tested. They do not determine the current revision’s status.</p>
+        {negativeLessons.length > 0 && <section className="record-section" aria-label="Reusable negative lessons">
+          <h3>Reusable negative lessons <span>{negativeLessons.length}</span></h3>
+          {negativeLessons.map(n => <article className="evidence" key={n.id}>
+            <span className="badge">{n.classification === "hard" ? "Hard · checked finite witness" : "Soft · unverified explanation"}</span>
+            <p>{n.failureReason}</p>
+            <p className="muted-copy">Original scope: {n.originalScope}</p>
+            <p className="muted-copy">Pruning: {n.exclusion.safeToPrune ? "Only the exact checked recipe" : "Not authorized"}. Never generalized automatically.</p>
+            <details className="disclosure"><summary>Discovery value & conditions for reuse</summary>
+              <p>Attempt: {n.attempt}</p><p>Assumptions: {n.assumptions || "Not specified"}</p>
+              {n.checkedWitness && <p>Checked witness: {JSON.stringify(n.checkedWitness)}</p>}
+              {n.reportedWitness && <p>Reported witness (unverified): {n.reportedWitness}</p>}
+              {n.candidateGeneralization && <p>Unproved generalization: {n.candidateGeneralization}</p>}
+              {n.alternativeRepresentation && <p>Alternative representation: {n.alternativeRepresentation}</p>}
+              {n.revisitWhen.length > 0 && <p>Revisit when: {n.revisitWhen.join("; ")}</p>}
+              <p>Next research action: {n.information.nextBestAction}</p>
+              <p className="form-hint">Information rank is discovery triage, not a truth score.</p>
+            </details>
+          </article>)}
+        </section>}
         <div className="timeline">{claim.revisions.slice().reverse().map(r => <article className="timeline-item" key={r.hash}><div className="timeline-heading"><h3>Revision {r.number}</h3>{r.number === revision.number && <span className="badge">Current</span>}<time>{r.createdAt.slice(0, 10)}</time></div><p className="detail-text">{r.statement}</p><details className="disclosure"><summary>Scope, assumptions & recipe</summary><p>Scope: {r.scope}</p><p>Assumptions: {r.assumptions || "None recorded"}</p>{r.recipe && <pre>{JSON.stringify(r.recipe, null, 2)}</pre>}<code>{r.hash}</code></details>{workspace.receipts.filter(v => v.claimId === claim.id && v.claimRevision === r.hash).map(receipt => <ReceiptCard key={receipt.id} receipt={receipt} />)}{workspace.evidence.filter(e => e.claimId === claim.id && e.revisionHash === r.hash).map(e => <div className="evidence" key={e.id}><span className="badge">{e.kind} · unverified</span><p>{e.summary}</p><code>{e.uri}</code></div>)}</article>)}</div>
       </TabsContent>
     </Tabs>
