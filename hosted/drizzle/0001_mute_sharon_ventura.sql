@@ -1,0 +1,1 @@
+ALTER TABLE `workspace_commits` ADD `result` text NOT NULL;

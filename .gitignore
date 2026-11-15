@@ -2,3 +2,9 @@ internal/research_kernel/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+
+.venv/
+hosted/node_modules/
+hosted/dist/
+hosted/.wrangler/

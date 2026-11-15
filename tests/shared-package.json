@@ -1,0 +1,67 @@
+{
+  "id": "fixture-package",
+  "claimId": "fixture-claim",
+  "title": "Square of a sum",
+  "hash": "963678a1108d0bdac0d8a03194425eb4bd520e12bac24b4ce28f9be3bfd5fbcf",
+  "claim": {
+    "title": "Square of a sum",
+    "statement": "The identity holds on the finite integer grid.",
+    "kind": "bounded",
+    "assumptions": "Integer arithmetic",
+    "scope": "Integers x,y in -5..5",
+    "recipe": {
+      "checker": "integer-grid/v1",
+      "variables": {
+        "x": {
+          "min": -5,
+          "max": 5
+        },
+        "y": {
+          "min": -5,
+          "max": 5
+        }
+      },
+      "left": "(x+y)^2",
+      "right": "x^2+2*x*y+y^2"
+    },
+    "dependencies": [],
+    "dependencyHashes": {},
+    "number": 1,
+    "author": "contributor",
+    "createdAt": "2026-10-01T00:00:00.000Z",
+    "hash": "4cdf4ab5f6fe8c0b1f342aaa862e4ecc0c1432ca9e9e781a92d6336ade079621"
+  },
+  "receipts": [
+    {
+      "id": "fixture-check",
+      "claimId": "fixture-claim",
+      "claimRevision": "4cdf4ab5f6fe8c0b1f342aaa862e4ecc0c1432ca9e9e781a92d6336ade079621",
+      "recipeHash": "8001f1e3c93a92730720011af0f391ac27ed58aedeb0cbb24030983b3698e311",
+      "checker": "integer-grid/v1",
+      "checkerSourceHash": "9fc12f8d3e7fc5f353f40dc8cc3b30a46fb778a02c5e25fdd693bb070bbf0c09",
+      "transcriptHash": "ddfe908380cd1f0eb9809099bea1426befaaaea2038a760deb0212d184820d6b",
+      "result": {
+        "outcome": "passed",
+        "cases": 121,
+        "totalCases": 121,
+        "scope": "x ∈ [-5, 5] ∩ ℤ; y ∈ [-5, 5] ∩ ℤ",
+        "counterexample": null,
+        "error": null,
+        "outputsHash": "ac4d80cdb9cdd687d1dae47248762096cfc26842fe9d4d4032a98c9cbb03157f"
+      },
+      "requestedBy": "contributor",
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "authority": "bounded-check-only",
+      "environment": {
+        "arithmetic": "ecmascript-bigint",
+        "bitLimit": 256,
+        "caseLimit": 2048
+      }
+    }
+  ],
+  "evidence": [],
+  "createdAt": "2026-10-01T00:00:00.000Z",
+  "license": "CC-BY-4.0",
+  "authority": "evidence-package",
+  "revoked": false
+}

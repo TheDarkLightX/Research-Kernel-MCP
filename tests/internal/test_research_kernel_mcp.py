@@ -287,3 +287,87 @@ def test_server_self_test_runs_without_starting_stdio() -> None:
     payload = json.loads(proc.stdout)
     assert payload["ok"] is True
     assert payload["server"] == "research-kernel"
+
+def test_typed_negative_memory_preserves_soft_obstructions_and_revisit_conditions(tmp_path: Path) -> None:
+    kernel, run_id, _dep_id, claim_id = _run_with_claim(tmp_path)
+    note = kernel.negative_record(
+        run_id=run_id,
+        target_atom_id=claim_id,
+        attempt="Search additive encodings without interaction features",
+        failure_reason="A mixed-term observation suggests an expressive limitation.",
+        scope="Additive-only feature encoding on finite examples",
+        assumptions="Integer-domain experiment, no product feature",
+        observed_counterexample="Reported mismatch for x=2,y=3",
+        candidate_generalization="Maybe no additive-only encoding works",
+        alternative_representation="Add x*y",
+        revisit_when=["After adding product features"],
+    )
+    assert note["classification"] == "soft"
+    assert note["authority"] == "unverified"
+    assert note["edge"]["edge_type"] == "TESTS"
+    assert kernel.get_atom(claim_id)["status"] == "UNKNOWN"
+
+    history = kernel.negative_memory(run_id=run_id, query="product features")
+    assert len(history["insights"]) == 1
+    insight = history["insights"][0]
+    assert insight["fields"]["alternativeRepresentation"] == "Add x*y"
+    assert insight["fields"]["revisitWhen"] == ["After adding product features"]
+    assert insight["exclusion"]["safeToPrune"] is False
+    assert insight["exclusion"]["generalizedPruningAuthorized"] is False
+    assert insight["information"]["rankingAuthority"] == "discovery-triage-only"
+    assert kernel.negative_memory(run_id=run_id, classification="hard")["insights"] == []
+
+    # The legacy actual flag is user-reported evidence, NOT a checked hard receipt.
+    kernel.refute(
+        run_id=run_id, target_atom_id=claim_id,
+        strategy="Try a reported counterexample in the old encoding.",
+        counterexample="Trace suggests the conservation invariant fails.",
+        counterexample_is_actual=True,
+    )
+    history = kernel.negative_memory(run_id=run_id, classification="soft")
+    assert len(history["insights"]) == 2
+    assert all(i["classification"] == "soft" for i in history["insights"])
+    assert kernel.negative_memory(run_id=run_id, classification="hard")["insights"] == []
+
+    with pytest.raises(ValueError, match="at least 3 characters"):
+        kernel.negative_record(
+            run_id=run_id, target_atom_id=claim_id,
+            attempt="a", failure_reason="x", scope="one",
+        )
+    with pytest.raises(ValueError, match="classification must be"):
+        kernel.negative_memory(classification="formal")
+
+
+def test_negative_history_search_not_truncated_by_newer_unrelated_risks(tmp_path: Path) -> None:
+    """The historical match must not disappear beyond a 1,000-atom scan window."""
+    kernel, run_id, _dep_id, claim_id = _run_with_claim(tmp_path)
+    historic = kernel.negative_record(
+        run_id=run_id,
+        target_atom_id=claim_id,
+        attempt="Try the rare historical polynomial encoding",
+        failure_reason="A unique obstruction to an older approach was observed.",
+        scope="Exact historical representation with a unique lookup key",
+        revisit_when=["rare-historical-trigger"],
+    )
+    # Force a strict old timestamp rather than relying on second-resolution
+    # wall-clock ordering or randomly generated atom IDs.
+    with kernel._connect() as conn:
+        conn.execute(
+            "UPDATE atoms SET created_at = ? WHERE id = ?",
+            ("2000-01-01T00:00:00Z", historic["atom"]["id"]),
+        )
+    for i in range(1005):
+        kernel.atom_add(
+            run_id=run_id, atom_type="RISK", content=f"Unrelated newer risk {i}",
+            status="UNDER_TEST",
+        )
+    found = kernel.negative_memory(
+        run_id=run_id, query="rare-historical-trigger", classification="soft", limit=1,
+    )
+    assert len(found["insights"]) == 1
+    assert found["insights"][0]["id"] == historic["atom"]["id"]
+    assert found["insights"][0]["fields"]["revisitWhen"] == ["rare-historical-trigger"]
+    assert kernel.negative_memory(
+        run_id=run_id, query="nonexistent-failure-query", limit=1,
+    )["insights"] == []
+

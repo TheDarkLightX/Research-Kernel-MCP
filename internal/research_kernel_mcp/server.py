@@ -35,6 +35,10 @@ from internal.research_kernel_mcp.literature import (  # noqa: E402
     SUPPORTED_PROVIDERS,
     LiteratureAdapterError,
 )
+from internal.research_kernel_mcp.shared_memory import (  # noqa: E402
+    export_scoped_claim,
+    import_evidence_package,
+)
 
 mcp = FastMCP("research-kernel") if FastMCP is not None else None
 
@@ -364,6 +368,53 @@ async def rk_refute(
 
 
 @_tool()
+async def rk_negative_record(
+    ctx: Context,
+    run_id: str,
+    target_atom_id: str,
+    attempt: str,
+    failure_reason: str,
+    scope: str,
+    assumptions: str = "",
+    observed_counterexample: str = "",
+    candidate_generalization: str = "",
+    alternative_representation: str = "",
+    revisit_when_json: str = "",
+) -> str:
+    """Preserve an informative SOFT failure; caller text cannot certify an impossibility."""
+    out = _kernel().negative_record(
+        run_id=run_id,
+        target_atom_id=target_atom_id,
+        attempt=attempt,
+        failure_reason=failure_reason,
+        scope=scope,
+        assumptions=assumptions,
+        observed_counterexample=observed_counterexample,
+        candidate_generalization=candidate_generalization,
+        alternative_representation=alternative_representation,
+        revisit_when=[str(x) for x in parse_json_list(revisit_when_json, field="revisit_when_json")],
+    )
+    await _progress(ctx, f"Soft negative recorded: {out['atom']['id']}")
+    return _json(out)
+
+
+@_tool()
+async def rk_negative_memory(
+    ctx: Context,
+    run_id: str = "",
+    query: str = "",
+    classification: str = "all",
+    limit: int = 50,
+) -> str:
+    """Retrieve retained negative memory, information gaps and next validation actions."""
+    out = _kernel().negative_memory(
+        run_id=run_id or None, query=query, classification=classification, limit=limit,
+    )
+    await _progress(ctx, f"Historical negative records: {len(out['insights'])}")
+    return _json(out)
+
+
+@_tool()
 async def rk_evidence_attach(
     ctx: Context,
     run_id: str,
@@ -434,6 +485,32 @@ async def rk_report(ctx: Context, run_id: str, include_graph: bool = False) -> s
     """Generate a structured research snapshot: claims, failures, contradictions, frontier, and non-claims."""
     out = _kernel().report(run_id=run_id, include_graph=bool(include_graph))
     await _progress(ctx, "Report generated")
+    return _json(out)
+
+
+@_tool()
+async def rk_export_scoped_claim(
+    ctx: Context,
+    atom_id: str,
+    title: str,
+    assumptions: str,
+    scope: str,
+    kind: str = "hypothesis",
+    recipe_json: str = "",
+) -> str:
+    """Prepare one selected unverified claim for the hosted shared-memory server; this does not publish it."""
+    recipe = parse_json_object(recipe_json, field="recipe_json") if recipe_json.strip() else None
+    return _json(export_scoped_claim(_kernel(), atom_id=atom_id, title=title, assumptions=assumptions, scope=scope, kind=kind, recipe=recipe))
+
+
+@_tool()
+async def rk_import_evidence_package(ctx: Context, run_id: str, package_json: str) -> str:
+    """Validate an exported hosted package and import as triage-only memory, preserving no external verification authority."""
+    if len(package_json.encode("utf-8")) > 200000:
+        raise ValueError("evidence package exceeds 200 KB")
+    packet = parse_json_object(package_json, field="package_json")
+    out = import_evidence_package(_kernel(), run_id=run_id, packet=packet)
+    await _progress(ctx, "Selected evidence package imported as triage-only memory.")
     return _json(out)
 
 

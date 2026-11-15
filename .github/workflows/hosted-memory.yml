@@ -1,0 +1,26 @@
+name: Hosted memory checks
+on:
+  pull_request:
+    paths: ["hosted/**", "internal/research_kernel_mcp/shared_memory.py", "tests/internal/test_shared_memory.py", ".github/workflows/hosted-memory.yml"]
+  push:
+    branches: [main]
+    paths: ["hosted/**", ".github/workflows/hosted-memory.yml"]
+jobs:
+  hosted:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+          package_json_file: hosted/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm typecheck
+      - run: pnpm build
