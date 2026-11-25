@@ -209,6 +209,14 @@ class KernelConfig:
         return cls(home=home, repo=repo_root(), mode=mode)
 
 
+def dependency_ids(atom: dict[str, Any], edge_rows: list[Any]) -> list[str]:
+    """Declared parents and outgoing dependency targets, never incoming dependents."""
+    return sorted(set(atom["parent_ids"]) | {
+        e["target_atom_id"] for e in edge_rows
+        if e["edge_type"] == "DEPENDS_ON" and e["source_atom_id"] == atom["id"]
+    })
+
+
 def promotion_gate(
     atom: dict[str, Any],
     evidence_rows: list[Any],
@@ -216,6 +224,8 @@ def promotion_gate(
     target: str,
     rationale: str,
     checks: dict[str, Any],
+    *,
+    dependency_statuses: dict[str, str | None],
 ) -> dict[str, Any]:
     """The fail-closed promotion gate as a pure function of an atom and its rows.
 
@@ -224,7 +234,8 @@ def promotion_gate(
     hypothetical rows without recording anything.
     """
     current = atom["status"]
-    dependencies = [e for e in edge_rows if e["edge_type"] == "DEPENDS_ON"] or atom["parent_ids"]
+    dependencies = dependency_ids(atom, edge_rows)
+    refuted_dependencies = [aid for aid in dependencies if dependency_statuses.get(aid) == "REFUTED"]
     support_evidence = [
         e
         for e in evidence_rows
@@ -253,6 +264,7 @@ def promotion_gate(
         "evidence_without_provenance": evidence_without_provenance,
         "counterexample_evidence": counterexample_evidence,
         "refuting_edges": refuting_edges,
+        "refuted_dependencies": refuted_dependencies,
     }
     if not provenance:
         diagnostics["provenance_hint"] = (
@@ -270,6 +282,7 @@ def promotion_gate(
         "has_support_evidence": bool(support_evidence),
         "has_refutation_attempt": bool(refutation_attempts),
         "has_dependencies": bool(dependencies),
+        "has_no_refuted_dependencies": not refuted_dependencies,
         "has_provenance": bool(provenance),
         "has_contradiction_search": bool(contradiction_search),
         "has_replay_recipe": bool(replay_recipe),
@@ -286,6 +299,7 @@ def promotion_gate(
             "has_support_evidence",
             "has_refutation_attempt",
             "has_dependencies",
+            "has_no_refuted_dependencies",
             "has_provenance",
             "has_contradiction_search",
             "has_replay_recipe",
@@ -1841,7 +1855,8 @@ class ResearchKernel:
                 # A surviving attempt adds one TESTS edge; the rationale is the caller's later duty.
                 edges.append({"id": "hypothetical", "edge_type": "TESTS", "source_atom_id": "hypothetical",
                               "target_atom_id": atom["id"]})
-                gate = promotion_gate(atom, evidence, edges, "SUPPORTED", "hypothetical", {})
+                gate = promotion_gate(atom, evidence, edges, "SUPPORTED", "hypothetical", {},
+                                      dependency_statuses=self._dependency_statuses(conn, atom, edges))
                 ready[atom["id"]] = gate["ok"]
         hinges = decision.affected(chosen, depends_on, [a["id"] for a in atoms])
         ranking = []
@@ -1868,6 +1883,14 @@ class ResearchKernel:
         }
         return {"ok": True, "run_id": run_id, "candidates": chosen, "ranking": ranking, "robust": robust,
                 "notes": "Advisory only: no status changes, and outcomes are never assumed independent."}
+
+    @staticmethod
+    def _dependency_statuses(conn, atom: dict[str, Any], edges: list[Any]) -> dict[str, str | None]:
+        statuses = {}
+        for aid in dependency_ids(atom, edges):
+            row = conn.execute("SELECT status FROM atoms WHERE id = ?", (aid,)).fetchone()
+            statuses[aid] = row["status"] if row is not None else None
+        return statuses
 
     def _dependency_map(self, run_id: str) -> dict[str, set[str]]:
         """Each atom's direct dependencies: DEPENDS_ON targets and declared parents."""
@@ -1917,7 +1940,8 @@ class ResearchKernel:
                 "SELECT * FROM edges WHERE target_atom_id = ? OR source_atom_id = ?",
                 (claim_atom_id, claim_atom_id),
             ).fetchall()
-            gate = promotion_gate(atom, evidence_rows, edge_rows, target, rationale, checks)
+            gate = promotion_gate(atom, evidence_rows, edge_rows, target, rationale, checks,
+                                  dependency_statuses=self._dependency_statuses(conn, atom, edge_rows))
             missing = gate["missing"]
             pid = _id("promotion")
             ts = now_iso()
