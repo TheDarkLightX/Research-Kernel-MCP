@@ -164,3 +164,55 @@ def test_refutation_plan_with_no_open_claims_is_empty(tmp_path: Path) -> None:
     kernel = ResearchKernel(tmp_path)
     run_id = kernel.start_run(goal="g", title="t", domain="d", success_criteria="s")["run"]["id"]
     assert kernel.refutation_plan(run_id=run_id)["candidates"] == []
+
+
+@pytest.mark.parametrize("relationship", ["parent", "outgoing", "incoming"])
+@pytest.mark.parametrize("dependency_status", ["REFUTED", "CANDIDATE"])
+def test_promotion_and_planning_agree_on_refuted_dependencies(tmp_path, relationship, dependency_status):
+    kernel = ResearchKernel(tmp_path)
+    run_id = kernel.start_run(goal="g", title="t", domain="d", success_criteria="s")["run"]["id"]
+    base = kernel.atom_add(run_id=run_id, atom_type="OBSERVATION", content="base",
+                           status=dependency_status)["atom"]["id"]
+    other = kernel.atom_add(run_id=run_id, atom_type="OBSERVATION", content="other")["atom"]["id"]
+    claim = _claim(kernel, run_id, "claim", [base] if relationship == "parent" else [other], 0.9)
+    if relationship != "parent":
+        source, target = (claim, base) if relationship == "outgoing" else (base, claim)
+        kernel.link(run_id=run_id, source_atom_id=source, target_atom_id=target, edge_type="DEPENDS_ON")
+    _ready(kernel, run_id, claim, tmp_path)
+    kernel.link(run_id=run_id, source_atom_id=other, target_atom_id=claim, edge_type="TESTS")
+    before = kernel.run_summary(run_id)
+    plan = kernel.refutation_plan(run_id=run_id)
+    assert kernel.run_summary(run_id) == before  # Planning is read-only.
+    blocked = dependency_status == "REFUTED" and relationship != "incoming"
+    assert plan["ranking"][0]["promotions_at_stake"] == int(not blocked)
+    result = kernel.promote(claim_atom_id=claim, to_status="SUPPORTED", rationale="checked")
+    assert result["ok"] is not blocked
+    assert result["gate"]["diagnostics"]["refuted_dependencies"] == ([base] if blocked else [])
+    assert ("has_no_refuted_dependencies" in result["gate"]["missing"]) == blocked
+    assert kernel.get_atom(claim)["status"] == ("CANDIDATE" if blocked else "SUPPORTED")
+
+
+def test_refuting_dependency_does_not_demote_existing_supported_claim(tmp_path):
+    kernel = ResearchKernel(tmp_path)
+    run_id = kernel.start_run(goal="g", title="t", domain="d", success_criteria="s")["run"]["id"]
+    base = _claim(kernel, run_id, "base", [], 0.5)
+    claim = _claim(kernel, run_id, "claim", [base], 0.9)
+    _ready(kernel, run_id, claim, tmp_path)
+    kernel.link(run_id=run_id, source_atom_id=base, target_atom_id=claim, edge_type="TESTS")
+    assert kernel.promote(claim_atom_id=claim, to_status="SUPPORTED", rationale="checked")["ok"]
+    kernel.refute(run_id=run_id, target_atom_id=base, strategy="counterexample",
+                  counterexample="a failing case", counterexample_is_actual=True)
+    assert kernel.get_atom(base)["status"] == "REFUTED"
+    assert kernel.get_atom(claim)["status"] == "SUPPORTED"
+    result = kernel.promote(claim_atom_id=claim, to_status="SUPPORTED", rationale="recheck")
+    assert not result["ok"]
+    assert result["gate"]["diagnostics"]["refuted_dependencies"] == [base]
+    assert kernel.get_atom(claim)["status"] == "SUPPORTED"
+
+
+def test_dependency_ids_union_parents_and_outgoing_edges():
+    from internal.research_kernel_mcp.kernel import dependency_ids
+    atom = {"id": "claim", "parent_ids": ["parent"]}
+    edges = [{"edge_type": "DEPENDS_ON", "source_atom_id": "claim", "target_atom_id": "edge"},
+             {"edge_type": "DEPENDS_ON", "source_atom_id": "incoming", "target_atom_id": "claim"}]
+    assert dependency_ids(atom, edges) == ["edge", "parent"]
