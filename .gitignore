@@ -8,3 +8,5 @@ __pycache__/
 hosted/node_modules/
 hosted/dist/
 hosted/.wrangler/
+tools/zeno_adp_vectors/target/
+tools/zeno_adp_vectors/Cargo.lock

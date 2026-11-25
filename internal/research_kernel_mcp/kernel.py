@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from internal.research_kernel_mcp import decision
 from internal.research_kernel_mcp.kurate import (
     DISCOVERY_AUTHORITY,
     KURATE_PROVIDER,
@@ -206,6 +207,104 @@ class KernelConfig:
         home = Path(os.environ.get("RESEARCH_HOME", str(default_research_home()))).expanduser().resolve()
         mode = os.environ.get("RK_MODE", "safe").strip() or "safe"
         return cls(home=home, repo=repo_root(), mode=mode)
+
+
+def promotion_gate(
+    atom: dict[str, Any],
+    evidence_rows: list[Any],
+    edge_rows: list[Any],
+    target: str,
+    rationale: str,
+    checks: dict[str, Any],
+) -> dict[str, Any]:
+    """The fail-closed promotion gate as a pure function of an atom and its rows.
+
+    ``edge_rows`` are the edges with the atom as source or target. ``promote`` records the
+    result and changes status only when nothing is missing; ``refutation_plan`` evaluates
+    hypothetical rows without recording anything.
+    """
+    current = atom["status"]
+    dependencies = [e for e in edge_rows if e["edge_type"] == "DEPENDS_ON"] or atom["parent_ids"]
+    support_evidence = [
+        e
+        for e in evidence_rows
+        if e["source_type"] in {"source", "paper", "benchmark", "proof", "experiment", "test", "log", "artifact", "support"}
+    ]
+    refutation_attempts = [
+        e for e in edge_rows if e["edge_type"] in {"TESTS", "REFUTES", "CONTRADICTS"}
+    ] + [e for e in evidence_rows if e["source_type"] in {"refutation", "counterexample", "contradiction_search"}]
+    evidence_with_provenance = [e["id"] for e in evidence_rows if e["source_uri"] or e["artifact_hash"]]
+    evidence_without_provenance = [e["id"] for e in evidence_rows if not (e["source_uri"] or e["artifact_hash"])]
+    provenance = bool(evidence_with_provenance)
+    contradiction_search = bool(checks.get("contradiction_search_done")) or any(
+        e["source_type"] == "contradiction_search" for e in evidence_rows
+    )
+    replay_recipe = bool(checks.get("replay_recipe")) or not checks.get("replay_required", False) or any(
+        e["source_type"] in {"benchmark", "proof", "experiment", "test", "log"} for e in evidence_rows
+    )
+    counterexample_evidence = [e["id"] for e in evidence_rows if e["source_type"] == "counterexample"]
+    refuting_edges = [e["id"] for e in edge_rows if e["edge_type"] in {"REFUTES", "CONTRADICTS"}]
+    counterexample = bool(counterexample_evidence or refuting_edges)
+    no_refuting_evidence = (not counterexample) and current != "REFUTED"
+    supported_type = atom["type"] in {"CLAIM", "HYPOTHESIS", "RESULT", "DECISION"}
+    claim_authority = atom.get("metadata", {}).get("authority") != DISCOVERY_AUTHORITY
+    diagnostics: dict[str, Any] = {
+        "evidence_with_provenance": evidence_with_provenance,
+        "evidence_without_provenance": evidence_without_provenance,
+        "counterexample_evidence": counterexample_evidence,
+        "refuting_edges": refuting_edges,
+    }
+    if not provenance:
+        diagnostics["provenance_hint"] = (
+            "Attach at least one evidence record with source_uri, artifact_path, or artifact_text "
+            "before promoting to SUPPORTED or REFUTED."
+        )
+    if counterexample:
+        diagnostics["refutation_hint"] = (
+            "SUPPORT promotion is blocked while counterexample evidence or REFUTES/CONTRADICTS edges exist."
+        )
+    gate = {
+        "target": target,
+        "has_supported_type": bool(supported_type),
+        "has_claim_authority": bool(claim_authority),
+        "has_support_evidence": bool(support_evidence),
+        "has_refutation_attempt": bool(refutation_attempts),
+        "has_dependencies": bool(dependencies),
+        "has_provenance": bool(provenance),
+        "has_contradiction_search": bool(contradiction_search),
+        "has_replay_recipe": bool(replay_recipe),
+        "has_promotion_rationale": bool(rationale),
+        "has_counterexample_or_refuting_evidence": bool(counterexample),
+        "has_no_refuting_evidence": bool(no_refuting_evidence),
+        "input_checks": checks,
+        "diagnostics": diagnostics,
+    }
+    if target == "SUPPORTED":
+        required = [
+            "has_supported_type",
+            "has_claim_authority",
+            "has_support_evidence",
+            "has_refutation_attempt",
+            "has_dependencies",
+            "has_provenance",
+            "has_contradiction_search",
+            "has_replay_recipe",
+            "has_promotion_rationale",
+            "has_no_refuting_evidence",
+        ]
+    elif target == "REFUTED":
+        required = [
+            "has_claim_authority",
+            "has_counterexample_or_refuting_evidence",
+            "has_provenance",
+            "has_promotion_rationale",
+        ]
+    else:
+        required = ["has_promotion_rationale"]
+    missing = [key for key in required if not gate[key]]
+    gate["ok"] = not missing
+    gate["missing"] = missing
+    return gate
 
 
 class ResearchKernel:
@@ -1629,7 +1728,8 @@ class ResearchKernel:
             ).fetchone()[0]
             evidence_count = conn.execute("SELECT COUNT(*) FROM evidence WHERE atom_id = ?", (atom_id,)).fetchone()[0]
         evidence_quality = min(1.0, evidence_count * 0.25 + support_count * 0.15)
-        contradiction_penalty = min(1.0, refute_count * 0.25)
+        parts = decision.components(atom, refute_count)
+        contradiction_penalty = parts["contradiction"] / 1000
         atom_score = (
             evidence_quality
             + atom["refutability_score"]
@@ -1638,14 +1738,8 @@ class ResearchKernel:
             + atom["uncertainty_score"] * 0.5
             - contradiction_penalty
         )
-        priority = (
-            atom["importance_score"]
-            + atom["uncertainty_score"]
-            + atom["refutability_score"]
-            + atom["novelty_score"]
-            + min(1.0, len(atom["parent_ids"]) * 0.15)
-            - contradiction_penalty
-        )
+        # The balanced model in integer milli-points, so ties and order are exact.
+        priority = decision.model_score(parts, decision.DEFAULT_MODELS["balanced"]) / 1000
         return {
             "ok": True,
             "atom_id": atom_id,
@@ -1658,11 +1752,43 @@ class ResearchKernel:
                 "evidence_count": evidence_count,
                 "contradiction_penalty": round(contradiction_penalty, 6),
             },
+            "components_milli": parts,
         }
 
-    def frontier(self, *, run_id: str, limit: int = 10) -> dict[str, Any]:
+    def frontier(self, *, run_id: str, limit: int = 10, models: dict[str, dict[str, int]] | None = None) -> dict[str, Any]:
+        """Open research items in Pareto layers over integer components, then by balanced score.
+
+        Layer 0 holds the items no other item beats on every component. ``common_optimum``
+        names the items that score highest under every declared weighting, if any do.
+        """
         limit_i = max(1, min(50, int(limit)))
-        items: list[dict[str, Any]] = []
+        declared = decision.parse_models(models)
+        atoms = self._open_atoms(run_id)
+        parts = {atom["id"]: self.score_atom(atom["id"])["components_milli"] for atom in atoms}
+        ranked = decision.rank_frontier(parts, declared)
+        by_id = {atom["id"]: atom for atom in atoms}
+        items = []
+        for atom_id in ranked["order"][:limit_i]:
+            atom = by_id[atom_id]
+            items.append(
+                {
+                    "atom_id": atom_id,
+                    "type": atom["type"],
+                    "status": atom["status"],
+                    "content": atom["content"],
+                    "priority": decision.model_score(parts[atom_id], decision.DEFAULT_MODELS["balanced"]) / 1000,
+                    "components": parts[atom_id],
+                    "pareto_layer": ranked["layers"][atom_id]["layer"],
+                    "dominated_by": ranked["layers"][atom_id]["dominated_by"],
+                    "optimal_in": ranked["optimal_in"][atom_id],
+                    "next_action": self._next_action(atom),
+                    "tags": atom["tags"],
+                }
+            )
+        return {"ok": True, "run_id": run_id, "ordering": "pareto_layer, balanced score, atom_id",
+                "models": declared, "common_optimum": ranked["common_optimum"], "frontier": items}
+
+    def _open_atoms(self, run_id: str) -> list[dict[str, Any]]:
         with self._connect() as conn:
             self._get_run(conn, run_id)
             rows = conn.execute(
@@ -1673,22 +1799,89 @@ class ResearchKernel:
                 """,
                 (run_id,),
             ).fetchall()
-        for row in rows:
-            atom = self._row_atom(row)
-            score = self.score_atom(atom["id"])
-            items.append(
-                {
-                    "atom_id": atom["id"],
-                    "type": atom["type"],
-                    "status": atom["status"],
-                    "content": atom["content"],
-                    "priority": score["priority"],
-                    "next_action": self._next_action(atom),
-                    "tags": atom["tags"],
-                }
-            )
-        items.sort(key=lambda item: (item["priority"], item["atom_id"]), reverse=True)
-        return {"ok": True, "run_id": run_id, "frontier": items[:limit_i]}
+        return [self._row_atom(row) for row in rows]
+
+    def refutation_plan(
+        self,
+        *,
+        run_id: str,
+        candidates: int = 6,
+        regret_budget: int = 1,
+        pending_cost: int = 3,
+    ) -> dict[str, Any]:
+        """Which refutation attempts to run next, ranked by the promotion decisions at stake.
+
+        Candidates are the top open claims of the frontier. A claim's decision hinges on
+        itself and every candidate it depends on. Refuting a candidate blocks every claim
+        that hinges on it; surviving an attempt leaves them to the rest of the gate.
+
+        ``ranking`` counts, per candidate, the decisions that hinge on it and the
+        promotions at stake: hinging claims whose SUPPORTED gate would pass after a
+        surviving attempt. ``robust`` considers every combination of outcomes. It commits
+        to the attempts that are optimal in every outcome world (cost 1 per attempt,
+        ``pending_cost`` per decision still pending), and to those within
+        ``regret_budget`` of optimal in every world. Nothing is recorded or promoted.
+        """
+        k = max(1, min(8, int(candidates)))
+        budget = max(0, min(16, int(regret_budget)))
+        cost = max(1, min(100, int(pending_cost)))
+        atoms = [a for a in self._open_atoms(run_id) if a["type"] in {"CLAIM", "HYPOTHESIS", "RESULT", "DECISION"}]
+        if not atoms:
+            return {"ok": True, "run_id": run_id, "candidates": [], "ranking": [], "robust": None}
+        parts = {a["id"]: self.score_atom(a["id"])["components_milli"] for a in atoms}
+        order = decision.rank_frontier(parts, decision.parse_models(None))["order"]
+        chosen = order[:k]
+        depends_on, ready = self._dependency_map(run_id), {}
+        with self._connect() as conn:
+            for atom in atoms:
+                evidence = conn.execute("SELECT * FROM evidence WHERE atom_id = ?", (atom["id"],)).fetchall()
+                edges = [dict(e) for e in conn.execute(
+                    "SELECT * FROM edges WHERE target_atom_id = ? OR source_atom_id = ?", (atom["id"], atom["id"])
+                ).fetchall()]
+                # A surviving attempt adds one TESTS edge; the rationale is the caller's later duty.
+                edges.append({"id": "hypothetical", "edge_type": "TESTS", "source_atom_id": "hypothetical",
+                              "target_atom_id": atom["id"]})
+                gate = promotion_gate(atom, evidence, edges, "SUPPORTED", "hypothetical", {})
+                ready[atom["id"]] = gate["ok"]
+        hinges = decision.affected(chosen, depends_on, [a["id"] for a in atoms])
+        ranking = []
+        for position, cand in enumerate(chosen):
+            hinging = sorted(c for c, h in hinges.items() if cand in h)
+            ranking.append({"atom_id": cand, "decisions_hinging": len(hinging),
+                            "promotions_at_stake": sum(1 for c in hinging if ready[c]),
+                            "claims": hinging, "frontier_rank": position})
+        ranking.sort(key=lambda r: (-r["promotions_at_stake"], -r["decisions_hinging"], r["frontier_rank"]))
+        chart, subsets = decision.refutation_chart(chosen, hinges, cost)
+        zero = decision.zero_regret(chart)
+        within = decision.within_budget(chart, [budget] * chart.worlds)
+        common = zero["common_plan"]
+        robust = {
+            "worlds": chart.worlds,
+            "commit_now": decision.attempts_of(chart, subsets, zero["prefix"]),
+            "tied_prefixes": zero["count"],
+            "one_plan_optimal_in_every_world": common is not None,
+            "common_plan": decision.attempts_of(chart, subsets, common) if common is not None else None,
+            "within_budget": {"regret_budget": budget,
+                              "attempts": decision.attempts_of(chart, subsets, within["prefix"]),
+                              "tied_prefixes": within["count"], "max_regret": max(within["regret"])},
+            "costs": {"attempt": 1, "pending_decision": cost},
+        }
+        return {"ok": True, "run_id": run_id, "candidates": chosen, "ranking": ranking, "robust": robust,
+                "notes": "Advisory only: no status changes, and outcomes are never assumed independent."}
+
+    def _dependency_map(self, run_id: str) -> dict[str, set[str]]:
+        """Each atom's direct dependencies: DEPENDS_ON targets and declared parents."""
+        depends: dict[str, set[str]] = {}
+        with self._connect() as conn:
+            for edge in conn.execute(
+                "SELECT source_atom_id, target_atom_id FROM edges WHERE run_id = ? AND edge_type = 'DEPENDS_ON'",
+                (run_id,),
+            ).fetchall():
+                depends.setdefault(edge["source_atom_id"], set()).add(edge["target_atom_id"])
+            for row in conn.execute("SELECT id, parent_ids_json FROM atoms WHERE run_id = ?", (run_id,)).fetchall():
+                for parent in json.loads(row["parent_ids_json"]):
+                    depends.setdefault(row["id"], set()).add(parent)
+        return depends
 
     def _next_action(self, atom: dict[str, Any]) -> str:
         if atom["type"] in {"CLAIM", "HYPOTHESIS"} and atom["status"] in {"UNKNOWN", "CANDIDATE"}:
@@ -1724,86 +1917,8 @@ class ResearchKernel:
                 "SELECT * FROM edges WHERE target_atom_id = ? OR source_atom_id = ?",
                 (claim_atom_id, claim_atom_id),
             ).fetchall()
-            dependencies = [e for e in edge_rows if e["edge_type"] == "DEPENDS_ON"] or atom["parent_ids"]
-            support_evidence = [
-                e
-                for e in evidence_rows
-                if e["source_type"] in {"source", "paper", "benchmark", "proof", "experiment", "test", "log", "artifact", "support"}
-            ]
-            refutation_attempts = [
-                e for e in edge_rows if e["edge_type"] in {"TESTS", "REFUTES", "CONTRADICTS"}
-            ] + [e for e in evidence_rows if e["source_type"] in {"refutation", "counterexample", "contradiction_search"}]
-            evidence_with_provenance = [e["id"] for e in evidence_rows if e["source_uri"] or e["artifact_hash"]]
-            evidence_without_provenance = [e["id"] for e in evidence_rows if not (e["source_uri"] or e["artifact_hash"])]
-            provenance = bool(evidence_with_provenance)
-            contradiction_search = bool(checks.get("contradiction_search_done")) or any(
-                e["source_type"] == "contradiction_search" for e in evidence_rows
-            )
-            replay_recipe = bool(checks.get("replay_recipe")) or not checks.get("replay_required", False) or any(
-                e["source_type"] in {"benchmark", "proof", "experiment", "test", "log"} for e in evidence_rows
-            )
-            counterexample_evidence = [e["id"] for e in evidence_rows if e["source_type"] == "counterexample"]
-            refuting_edges = [e["id"] for e in edge_rows if e["edge_type"] in {"REFUTES", "CONTRADICTS"}]
-            counterexample = bool(counterexample_evidence or refuting_edges)
-            no_refuting_evidence = (not counterexample) and current != "REFUTED"
-            supported_type = atom["type"] in {"CLAIM", "HYPOTHESIS", "RESULT", "DECISION"}
-            claim_authority = atom.get("metadata", {}).get("authority") != DISCOVERY_AUTHORITY
-            diagnostics: dict[str, Any] = {
-                "evidence_with_provenance": evidence_with_provenance,
-                "evidence_without_provenance": evidence_without_provenance,
-                "counterexample_evidence": counterexample_evidence,
-                "refuting_edges": refuting_edges,
-            }
-            if not provenance:
-                diagnostics["provenance_hint"] = (
-                    "Attach at least one evidence record with source_uri, artifact_path, or artifact_text "
-                    "before promoting to SUPPORTED or REFUTED."
-                )
-            if counterexample:
-                diagnostics["refutation_hint"] = (
-                    "SUPPORT promotion is blocked while counterexample evidence or REFUTES/CONTRADICTS edges exist."
-                )
-            gate = {
-                "target": target,
-                "has_supported_type": bool(supported_type),
-                "has_claim_authority": bool(claim_authority),
-                "has_support_evidence": bool(support_evidence),
-                "has_refutation_attempt": bool(refutation_attempts),
-                "has_dependencies": bool(dependencies),
-                "has_provenance": bool(provenance),
-                "has_contradiction_search": bool(contradiction_search),
-                "has_replay_recipe": bool(replay_recipe),
-                "has_promotion_rationale": bool(rationale),
-                "has_counterexample_or_refuting_evidence": bool(counterexample),
-                "has_no_refuting_evidence": bool(no_refuting_evidence),
-                "input_checks": checks,
-                "diagnostics": diagnostics,
-            }
-            if target == "SUPPORTED":
-                required = [
-                    "has_supported_type",
-                    "has_claim_authority",
-                    "has_support_evidence",
-                    "has_refutation_attempt",
-                    "has_dependencies",
-                    "has_provenance",
-                    "has_contradiction_search",
-                    "has_replay_recipe",
-                    "has_promotion_rationale",
-                    "has_no_refuting_evidence",
-                ]
-            elif target == "REFUTED":
-                required = [
-                    "has_claim_authority",
-                    "has_counterexample_or_refuting_evidence",
-                    "has_provenance",
-                    "has_promotion_rationale",
-                ]
-            else:
-                required = ["has_promotion_rationale"]
-            missing = [key for key in required if not gate[key]]
-            gate["ok"] = not missing
-            gate["missing"] = missing
+            gate = promotion_gate(atom, evidence_rows, edge_rows, target, rationale, checks)
+            missing = gate["missing"]
             pid = _id("promotion")
             ts = now_iso()
             conn.execute(

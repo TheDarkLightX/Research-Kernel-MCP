@@ -1,0 +1,13 @@
+[package]
+name = "zeno-adp-vectors"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Development tool only: writes the cross-check vectors for the Python ports in
+# internal/research_kernel_mcp/decision.py. It is not part of the Python package.
+[dependencies]
+zeno-adp = { git = "https://github.com/TheDarkLightX/Zeno-ADP", tag = "v0.8.0" }
+num-bigint = "0.4.8"
+
+[workspace]
