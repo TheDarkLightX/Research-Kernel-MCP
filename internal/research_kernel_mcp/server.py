@@ -7,7 +7,7 @@ import json
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 try:
     from mcp.server.fastmcp import Context, FastMCP
@@ -486,6 +486,21 @@ async def rk_refutation_plan(
     )
     await _progress(ctx, f"Refutation plan over {len(out['candidates'])} candidates")
     return _json(out)
+
+
+@_tool()
+def rk_dependency_impact(
+    atom_id: str,
+    direction: Literal["upstream", "downstream"] = "upstream",
+    limit: int = 25,
+) -> str:
+    """Trace shortest dependency paths across runs in one read-only snapshot.
+
+    Upstream finds recorded REFUTED premises of an atom. Downstream starts at a
+    recorded REFUTED atom and finds its dependents. Paths point from dependent to
+    premise in either mode. Results are advisory for reviewing recorded support.
+    """
+    return _json(_kernel().dependency_impact(atom_id=atom_id, direction=direction, limit=limit))
 
 
 @_tool()

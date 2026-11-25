@@ -105,6 +105,7 @@ The MCP exposes the compact tool surface from the design spec:
 - `rk_score`
 - `rk_frontier`
 - `rk_refutation_plan`
+- `rk_dependency_impact`
 - `rk_promote`
 - `rk_report`
 
@@ -113,8 +114,8 @@ support evidence, a refutation attempt, dependencies, provenance, contradiction
 search, replay evidence when required, and a rationale. A declared parent or outgoing
 `DEPENDS_ON` target with status `REFUTED` blocks promotion, with its ID reported in
 `gate.diagnostics.refuted_dependencies`. Refutation planning uses the same gate for
-promotions at stake. This checks direct dependencies; it does not automatically
-demote previously supported claims.
+promotions at stake. The gate checks direct dependencies and preserves previously
+recorded support when a later attempt fails.
 
 The hosted companion adds structured **negative discovery memory**: hard negatives are derived only from source-pinned bounded checker counterexamples for the exact tested recipe and original revision; soft negatives preserve attempted approaches, root causes, representation changes and conditions for revisiting them. `rk_negative_record` never grants proof authority. Its read path, `rk_negative_memory`, returns both with deterministic information-completeness triage and explicit generalization obligations. See [docs/NEGATIVE_MEMORY_CONTRACT.md](docs/NEGATIVE_MEMORY_CONTRACT.md). The Python stdio MCP also exposes `rk_negative_record` and `rk_negative_memory`, using the same soft-negative discovery fields. It has no independently trusted bounded-check receipt verifier, so even a user-asserted `rk_refute(counterexample_is_actual=true)` is **soft** for negative-memory reuse; the legacy refutation status and promotion rules are unchanged. This feature does not silently grant the Python kernel new proof authority.
 
@@ -134,8 +135,8 @@ a contradiction penalty.
 
 `rk_refutation_plan` asks which refutation attempts to run next.
 - **Candidates:** the top open claims of the frontier.
-- **Hinging:** a claim's promotion decision hinges on itself and on every candidate it
-  depends on.
+- **Hinging:** the planning model counts the claim itself and every candidate reachable
+  through declared dependencies. Paths may cross runs and include cycles.
 - **Ranking:** candidates are ranked by the promotions at stake. A promotion is at stake
   when the claim hinges on the candidate and its SUPPORTED gate would pass after a
   surviving attempt. Ties fall to the number of decisions that hinge on the candidate.
@@ -156,6 +157,23 @@ exact queries behind them are standard-library Python ports of Zeno-ADP 0.8.0's
 Evidence attached with only a summary can support a claim, but it does not
 satisfy promotion provenance. Include `source_uri`, `artifact_path`, or
 `artifact_text` on at least one evidence record before promoting a claim.
+
+### Dependency impact
+
+Use `rk_dependency_impact(atom_id="A")` to find refuted premises of A across any
+number of dependency hops. Use `rk_dependency_impact(atom_id="C", direction="downstream")`
+to find the dependents of a recorded refuted atom C. If A depends on supported B
+and B depends on refuted C, either query returns A → B → C with the recorded status
+and run ID at each hop. The report flags the exposed path for revalidation when its
+dependent is recorded supported.
+
+The Python MCP tool reads one snapshot of atom statuses, declared parents, and
+outgoing `DEPENDS_ON` links across the local database. Paths run from dependent to
+premise in both directions. Each matched atom has one shortest path, with ties
+resolved by the lexical sequence of atom IDs. The default limit is 25 paths and
+can be set from 1 to 100. `total_matches` counts matches before the limit.
+The trace is advisory. Each flag asks for review of the exposed justification,
+including whether another justification supplies independent support.
 
 ### Optional semantic search
 

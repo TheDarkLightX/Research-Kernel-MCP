@@ -371,3 +371,107 @@ def test_negative_history_search_not_truncated_by_newer_unrelated_risks(tmp_path
         run_id=run_id, query="nonexistent-failure-query", limit=1,
     )["insights"] == []
 
+
+
+def test_dependency_impact_follows_cross_run_links_through_supported_history(tmp_path):
+    kernel = ResearchKernel(tmp_path)
+    kernel.start_run(run_id="local", goal="Trace a refuted premise")
+    kernel.start_run(run_id="other", goal="Store cross-run dependencies and refutation")
+    for name, run in [("C", "other"), ("B", "local"), ("A", "local"), ("R", "other")]:
+        kernel.atom_add(
+            run_id=run, atom_id=name, atom_type="CLAIM", content=name, status="SUPPORTED",
+            parent_ids=["C"] if name == "B" else [],
+        )
+    for source, target, run, kind in [
+        ("A", "B", "other", "DEPENDS_ON"),
+        ("B", "A", "local", "DEPENDS_ON"),
+        ("A", "R", "local", "CITES"),
+        ("R", "A", "other", "DEPENDS_ON"),
+    ]:
+        kernel.link(run_id=run, source_atom_id=source, target_atom_id=target, edge_type=kind)
+    for name in ("C", "R"):
+        kernel.refute(
+            run_id="other", target_atom_id=name, strategy="fixture",
+            counterexample="a counterexample", counterexample_is_actual=True,
+        )
+    # Older records may have explicit parents without a materialized edge.
+    with kernel._connect() as conn:
+        conn.execute("DELETE FROM edges WHERE source_atom_id='B' AND target_atom_id='C'")
+    before = {p: p.read_bytes() for p in (kernel.db_path, kernel.event_log_path)}
+
+    upstream = kernel.dependency_impact(atom_id="A")
+    assert upstream["authority"] == "advisory_only"
+    witness, = upstream["paths"]
+    assert witness == {"hops": 2, "revalidation_required": True, "path": [
+        {"atom_id": "A", "run_id": "local", "recorded_status": "SUPPORTED"},
+        {"atom_id": "B", "run_id": "local", "recorded_status": "SUPPORTED"},
+        {"atom_id": "C", "run_id": "other", "recorded_status": "REFUTED"},
+    ]}
+    downstream = kernel.dependency_impact(atom_id="C", direction="downstream")
+    assert downstream["paths"][1] == witness
+    assert downstream["paths"][0]["hops"] == 1
+    assert downstream["paths"][2]["path"][0]["atom_id"] == "R"
+    assert downstream["paths"][2]["revalidation_required"] is False
+    assert kernel.dependency_impact(atom_id="R", direction="downstream")["paths"] == []
+    assert {p: p.read_bytes() for p in before} == before
+
+
+def test_dependency_impact_chooses_same_shortest_path_in_both_directions(tmp_path):
+    kernel = ResearchKernel(tmp_path)
+    kernel.start_run(run_id="run", goal="Exercise equal paths")
+    for name in "ABCDRWY":
+        kernel.atom_add(
+            run_id="run", atom_id=name, atom_type="CLAIM", content=name,
+            status="REFUTED" if name in "CR" else "SUPPORTED",
+        )
+    for source, target in [("A", "D"), ("D", "W"), ("W", "C"), ("A", "B"), ("B", "Y"), ("Y", "C"), ("A", "R")]:
+        kernel.link(run_id="run", source_atom_id=source, target_atom_id=target, edge_type="DEPENDS_ON")
+
+    truncated = kernel.dependency_impact(atom_id="A", limit=1)
+    assert (truncated["total_matches"], truncated["truncated"]) == (2, True)
+    assert [node["atom_id"] for node in truncated["paths"][0]["path"]] == ["A", "R"]
+    upstream = kernel.dependency_impact(atom_id="A")["paths"][1]
+    downstream = kernel.dependency_impact(atom_id="C", direction="downstream")["paths"][-1]
+    assert upstream == downstream
+    assert upstream["hops"] == 3
+    assert [node["atom_id"] for node in upstream["path"]] == ["A", "B", "Y", "C"]
+
+
+@pytest.mark.parametrize(("kwargs", "message"), [
+    ({"direction": "both"}, "direction"),
+    ({"limit": 0}, "limit"),
+    ({"limit": 101}, "limit"),
+    ({"direction": "downstream"}, "recorded REFUTED"),
+    ({"atom_id": "missing"}, "unknown atom_id"),
+])
+def test_dependency_impact_validates_query(tmp_path, kwargs, message):
+    kernel, _, _, claim = _run_with_claim(tmp_path)
+    with pytest.raises(ValueError, match=message):
+        kernel.dependency_impact(**({"atom_id": claim} | kwargs))
+
+
+def test_dependency_impact_through_mcp(tmp_path, monkeypatch):
+    import asyncio
+
+    from mcp.shared.memory import create_connected_server_and_client_session
+
+    from internal.research_kernel_mcp import server
+
+    kernel, run, premise, claim = _run_with_claim(tmp_path)
+    kernel.refute(
+        run_id=run, target_atom_id=premise, strategy="fixture",
+        counterexample="a counterexample", counterexample_is_actual=True,
+    )
+    monkeypatch.setenv("RESEARCH_HOME", str(kernel.home))
+
+    async def call():
+        async with create_connected_server_and_client_session(server.mcp) as client:
+            listed = await client.list_tools()
+            assert "rk_dependency_impact" in {tool.name for tool in listed.tools}
+            result = await client.call_tool("rk_dependency_impact", {"atom_id": claim})
+            assert not result.isError
+            return json.loads(result.content[0].text)
+
+    report = asyncio.run(call())
+    assert report == kernel.dependency_impact(atom_id=claim)
+    assert [step["atom_id"] for step in report["paths"][0]["path"]] == [claim, premise]

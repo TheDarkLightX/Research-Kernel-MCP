@@ -216,3 +216,48 @@ def test_dependency_ids_union_parents_and_outgoing_edges():
     edges = [{"edge_type": "DEPENDS_ON", "source_atom_id": "claim", "target_atom_id": "edge"},
              {"edge_type": "DEPENDS_ON", "source_atom_id": "incoming", "target_atom_id": "claim"}]
     assert dependency_ids(atom, edges) == ["edge", "parent"]
+
+
+def test_hinges_match_transitive_closure_with_cycles():
+    from itertools import combinations, permutations
+
+    for ids in ("A", "AB"):
+        pairs = [(source, target) for source in ids for target in ids]
+        for mask in range(1 << len(pairs)):
+            links = {pair for i, pair in enumerate(pairs) if mask & (1 << i)}
+            depends_on = {a: {b for b in ids if (a, b) in links} for a in ids}
+            closure = links | {(a, a) for a in ids}
+            for middle in ids:
+                closure |= {(a, b) for a in ids for b in ids
+                            if (a, middle) in closure and (middle, b) in closure}
+            for size in range(1, len(ids) + 1):
+                for candidates in combinations(ids, size):
+                    expected = {a: {b for b in candidates if (a, b) in closure} for a in ids}
+                    expected = {a: targets for a, targets in expected.items() if targets}
+                    for order in permutations(ids):
+                        assert d.affected(candidates, depends_on, iter(order)) == expected
+
+
+@pytest.mark.parametrize("order", ["ABC", "BAC"])
+@pytest.mark.parametrize("edge_run", ["local", "other"])
+def test_refutation_plan_counts_cycle_hinges_in_either_order(tmp_path, order, edge_run):
+    kernel = ResearchKernel(tmp_path)
+    kernel.start_run(run_id="local", goal="Check planner hinges")
+    kernel.start_run(run_id="other", goal="Store one link in a different run")
+    kernel.atom_add(run_id="local", atom_id="H", atom_type="OBSERVATION", content="premise")
+    for name in order:
+        kernel.atom_add(
+            run_id="local", atom_id=name, atom_type="CLAIM", content=name, status="CANDIDATE",
+            importance_score=1.0 if name == "C" else 0.5, parent_ids=["H"] if name == "C" else [],
+        )
+        _ready(kernel, "local", name, tmp_path)
+    for source, target, run in [("A", "B", "local"), ("B", "A", "local"), ("A", "C", edge_run)]:
+        kernel.link(run_id=run, source_atom_id=source, target_atom_id=target, edge_type="DEPENDS_ON")
+
+    before = kernel.event_log_path.read_bytes()
+    plan = kernel.refutation_plan(run_id="local", candidates=1)
+    assert plan["candidates"] == ["C"]
+    row, = plan["ranking"]
+    assert row["claims"] == ["A", "B", "C"]
+    assert row["decisions_hinging"] == row["promotions_at_stake"] == 3
+    assert kernel.event_log_path.read_bytes() == before
