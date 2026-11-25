@@ -104,6 +104,7 @@ The MCP exposes the compact tool surface from the design spec:
 - `rk_evidence_attach`
 - `rk_score`
 - `rk_frontier`
+- `rk_refutation_plan`
 - `rk_promote`
 - `rk_report`
 
@@ -114,6 +115,35 @@ search, replay evidence when required, and a rationale.
 The hosted companion adds structured **negative discovery memory**: hard negatives are derived only from source-pinned bounded checker counterexamples for the exact tested recipe and original revision; soft negatives preserve attempted approaches, root causes, representation changes and conditions for revisiting them. `rk_negative_record` never grants proof authority. Its read path, `rk_negative_memory`, returns both with deterministic information-completeness triage and explicit generalization obligations. See [docs/NEGATIVE_MEMORY_CONTRACT.md](docs/NEGATIVE_MEMORY_CONTRACT.md). The Python stdio MCP also exposes `rk_negative_record` and `rk_negative_memory`, using the same soft-negative discovery fields. It has no independently trusted bounded-check receipt verifier, so even a user-asserted `rk_refute(counterexample_is_actual=true)` is **soft** for negative-memory reuse; the legacy refutation status and promotion rules are unchanged. This feature does not silently grant the Python kernel new proof authority.
 
 The Python server now also exposes `rk_negative_record` (reasoned failure, scope, assumptions, reported witness, possible generalization, alternative representation, revisit conditions) and `rk_negative_memory` (historical retrieval and next validation action). Both are advisory; no proof certificate or pruning power is inferred.
+
+### Frontier and refutation planning
+
+`rk_frontier` ranks open items without collapsing them into one float. Each item carries
+integer milli-point components: importance, uncertainty, refutability, novelty, lineage, and
+a contradiction penalty.
+- **Order:** items come in Pareto layers. Layer 0 holds the items no other item beats on
+  every component; each later item names one that beats it. Within a layer the order is the
+  balanced score, which equals the earlier priority formula, then the atom ID.
+- **Weightings:** `models_json` declares up to eight integer weightings. `common_optimum`
+  names the items that score highest under every one of them, or says that none does. By
+  default the weightings are `balanced`, `refutation` and `exploration`.
+
+`rk_refutation_plan` asks which refutation attempts to run next.
+- **Candidates:** the top open claims of the frontier.
+- **Hinging:** a claim's promotion decision hinges on itself and on every candidate it
+  depends on.
+- **Ranking:** candidates are ranked by the promotions at stake. A promotion is at stake
+  when the claim hinges on the candidate and its SUPPORTED gate would pass after a
+  surviving attempt. Ties fall to the number of decisions that hinge on the candidate.
+- **`robust.commit_now`:** the attempts that are optimal in every combination of outcomes.
+  An attempt costs 1, and each decision still pending at the end costs `pending_cost`.
+- **`robust.within_budget`:** commits further, while staying within `regret_budget` of
+  optimal in every outcome world.
+
+Both tools are advisory. They change no status and do not relax the promotion gate. The
+exact queries behind them are standard-library Python ports of Zeno-ADP 0.8.0's
+`common_optimum` and `robust_prefix`, checked against vectors that Zeno-ADP produced; see
+[tools/zeno_adp_vectors](tools/zeno_adp_vectors/README.md).
 
 `rk_refute` treats `counterexample` text as planning context unless
 `counterexample_is_actual=true` is set. Actual counterexamples create a

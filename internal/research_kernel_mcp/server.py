@@ -454,10 +454,37 @@ async def rk_score(ctx: Context, atom_id: str) -> str:
 
 
 @_tool()
-async def rk_frontier(ctx: Context, run_id: str, limit: int = 10) -> str:
-    """Return highest-value next research tasks for a run."""
-    out = _kernel().frontier(run_id=run_id, limit=limit)
+async def rk_frontier(ctx: Context, run_id: str, limit: int = 10, models_json: str = "") -> str:
+    """Return the next research tasks for a run, in Pareto layers over integer components.
+
+    Items no other item beats on every component come first, then by the balanced score.
+    `models_json` optionally declares 1-8 weightings, e.g. {"impact": {"importance": 3}};
+    `common_optimum` names items that score highest under every one of them.
+    """
+    models = parse_json_object(models_json, field="models_json") or None
+    out = _kernel().frontier(run_id=run_id, limit=limit, models=models)
     await _progress(ctx, f"Frontier: {len(out['frontier'])}")
+    return _json(out)
+
+
+@_tool()
+async def rk_refutation_plan(
+    ctx: Context,
+    run_id: str,
+    candidates: int = 6,
+    regret_budget: int = 1,
+    pending_cost: int = 3,
+) -> str:
+    """Rank refutation attempts by the promotion decisions their outcome could change.
+
+    `robust.commit_now` lists attempts that are optimal in every combination of outcomes;
+    `robust.within_budget` allows `regret_budget` extra cost per world. Advisory only:
+    nothing is recorded, refuted or promoted.
+    """
+    out = _kernel().refutation_plan(
+        run_id=run_id, candidates=candidates, regret_budget=regret_budget, pending_cost=pending_cost
+    )
+    await _progress(ctx, f"Refutation plan over {len(out['candidates'])} candidates")
     return _json(out)
 
 

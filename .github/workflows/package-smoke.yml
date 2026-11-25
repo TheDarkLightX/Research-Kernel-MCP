@@ -23,4 +23,4 @@ jobs:
       - name: Backend tests
         run: |
           python -m pip install pytest
-          pytest -q tests/internal/test_research_kernel_mcp.py
+          pytest -q tests/internal/test_research_kernel_mcp.py tests/internal/test_decision.py
