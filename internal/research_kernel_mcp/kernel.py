@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from internal.research_kernel_mcp import decision
+from internal.research_kernel_mcp import decision, dependencies
 from internal.research_kernel_mcp.kurate import (
     DISCOVERY_AUTHORITY,
     KURATE_PROVIDER,
@@ -1826,8 +1826,8 @@ class ResearchKernel:
         """Which refutation attempts to run next, ranked by the promotion decisions at stake.
 
         Candidates are the top open claims of the frontier. A claim's decision hinges on
-        itself and every candidate it depends on. Refuting a candidate blocks every claim
-        that hinges on it; surviving an attempt leaves them to the rest of the gate.
+        itself and every candidate reachable through its declared dependencies. These
+        structural hinges model the planning outcomes; the gate checks direct dependencies.
 
         ``ranking`` counts, per candidate, the decisions that hinge on it and the
         promotions at stake: hinging claims whose SUPPORTED gate would pass after a
@@ -1845,8 +1845,10 @@ class ResearchKernel:
         parts = {a["id"]: self.score_atom(a["id"])["components_milli"] for a in atoms}
         order = decision.rank_frontier(parts, decision.parse_models(None))["order"]
         chosen = order[:k]
-        depends_on, ready = self._dependency_map(run_id), {}
+        ready = {}
         with self._connect() as conn:
+            conn.execute("BEGIN")
+            _, depends_on = self._dependency_snapshot(conn)
             for atom in atoms:
                 evidence = conn.execute("SELECT * FROM evidence WHERE atom_id = ?", (atom["id"],)).fetchall()
                 edges = [dict(e) for e in conn.execute(
@@ -1892,19 +1894,70 @@ class ResearchKernel:
             statuses[aid] = row["status"] if row is not None else None
         return statuses
 
-    def _dependency_map(self, run_id: str) -> dict[str, set[str]]:
-        """Each atom's direct dependencies: DEPENDS_ON targets and declared parents."""
-        depends: dict[str, set[str]] = {}
+    @staticmethod
+    def _dependency_snapshot(
+        conn: sqlite3.Connection,
+    ) -> tuple[dict[str, sqlite3.Row], dict[str, set[str]]]:
+        """Read the same dependency relations as the gate, across run labels."""
+        atoms = {
+            row["id"]: row for row in conn.execute("SELECT id, run_id, status, parent_ids_json FROM atoms")
+        }
+        depends_on = {}
+        for row in atoms.values():
+            parents = json.loads(row["parent_ids_json"])
+            if parents:
+                depends_on[row["id"]] = set(parents)
+        for edge in conn.execute(
+            "SELECT source_atom_id, target_atom_id FROM edges WHERE edge_type = 'DEPENDS_ON'"
+        ):
+            depends_on.setdefault(edge["source_atom_id"], set()).add(edge["target_atom_id"])
+        return atoms, depends_on
+
+    def dependency_impact(
+        self, *, atom_id: str, direction: str = "upstream", limit: int = 25,
+    ) -> dict[str, Any]:
+        """Read shortest paths to refuted premises or from dependents of a refuted atom."""
+        if direction not in ("upstream", "downstream"):
+            raise ValueError("direction must be upstream or downstream")
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
         with self._connect() as conn:
-            for edge in conn.execute(
-                "SELECT source_atom_id, target_atom_id FROM edges WHERE run_id = ? AND edge_type = 'DEPENDS_ON'",
-                (run_id,),
-            ).fetchall():
-                depends.setdefault(edge["source_atom_id"], set()).add(edge["target_atom_id"])
-            for row in conn.execute("SELECT id, parent_ids_json FROM atoms WHERE run_id = ?", (run_id,)).fetchall():
-                for parent in json.loads(row["parent_ids_json"]):
-                    depends.setdefault(row["id"], set()).add(parent)
-        return depends
+            conn.execute("BEGIN")
+            atoms, depends_on = self._dependency_snapshot(conn)
+        if atom_id not in atoms:
+            raise ValueError(f"unknown atom_id: {atom_id}")
+
+        downstream = direction == "downstream"
+        if downstream and atoms[atom_id]["status"] != "REFUTED":
+            raise ValueError("downstream requires a recorded REFUTED atom")
+        adjacency = dependencies.reverse_edges(depends_on) if downstream else depends_on
+        distance, toward_root = dependencies.walk(adjacency, atom_id, reverse=downstream)
+        matches = [
+            reached for reached in distance
+            if reached != atom_id and reached in atoms and (downstream or atoms[reached]["status"] == "REFUTED")
+        ]
+        matches.sort(key=lambda reached: (distance[reached], reached))
+        unresolved = sorted(distance.keys() - atoms.keys())
+
+        def record(aid: str) -> dict[str, str | None]:
+            row = atoms.get(aid)
+            return {"atom_id": aid, "run_id": row["run_id"] if row else None,
+                    "recorded_status": row["status"] if row else None}
+
+        paths = []
+        for matched in matches[:limit]:
+            path = dependencies.path_to_root(matched, toward_root)
+            if not downstream:
+                path.reverse()
+            paths.append({
+                "hops": distance[matched], "path": [record(aid) for aid in path],
+                "revalidation_required": atoms[path[0]]["status"] == "SUPPORTED",
+            })
+        return {
+            "ok": True, "authority": "advisory_only", "direction": direction, "subject": record(atom_id),
+            "paths": paths, "total_matches": len(matches), "truncated": len(matches) > limit,
+            "unresolved_atom_ids": unresolved,
+        }
 
     def _next_action(self, atom: dict[str, Any]) -> str:
         if atom["type"] in {"CLAIM", "HYPOTHESIS"} and atom["status"] in {"UNKNOWN", "CANDIDATE"}:

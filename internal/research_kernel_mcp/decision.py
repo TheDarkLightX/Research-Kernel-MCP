@@ -27,6 +27,8 @@ from dataclasses import dataclass
 from itertools import product
 from typing import Any
 
+from internal.research_kernel_mcp.dependencies import reverse_edges, walk
+
 # --- robust plan prefixes (port of zeno_adp::robust_prefix) ---------------------------------
 
 
@@ -289,24 +291,13 @@ def rank_frontier(items: dict[str, dict[str, int]], models: dict[str, dict[str, 
 
 def affected(candidates: Sequence[str], depends_on: dict[str, set[str]], claims: Iterable[str]) -> dict[str, set[str]]:
     """For each claim, the candidates its decision hinges on: itself and every candidate it depends on."""
-    closure: dict[str, set[str]] = {}
-
-    def ancestors(atom: str, seen: frozenset[str] = frozenset()) -> set[str]:
-        if atom in closure:
-            return closure[atom]
-        found = set()
-        for parent in depends_on.get(atom, ()):
-            if parent not in seen:
-                found |= {parent} | ancestors(parent, seen | {atom})
-        closure[atom] = found
-        return found
-
-    pool = set(candidates)
-    result = {}
-    for claim in claims:
-        hinge = ({claim} | ancestors(claim)) & pool
-        if hinge:
-            result[claim] = hinge
+    dependents = reverse_edges(depends_on)
+    claim_ids = set(claims)
+    result: dict[str, set[str]] = {}
+    for candidate in set(candidates):
+        distance, _ = walk(dependents, candidate)
+        for claim_id in claim_ids.intersection(distance):
+            result.setdefault(claim_id, set()).add(candidate)
     return result
 
 
